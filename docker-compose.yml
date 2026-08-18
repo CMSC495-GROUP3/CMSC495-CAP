@@ -1,0 +1,25 @@
+services:
+
+  backend:
+    build:
+      # Root context so the image can copy both backend/ and src/
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    # Published for local testing. In production Nginx proxies to this port on
+    # the internal Compose network and this mapping can be dropped.
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      # Self-contained context — the build needs nothing from the parent
+      context: frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

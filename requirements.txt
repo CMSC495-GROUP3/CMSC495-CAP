@@ -1,0 +1,17 @@
+# Ingestion pipeline dependencies (src/ scripts run from your shell).
+# The API service installs backend/requirements.txt instead.
+
+# OpenAI — embeddings and chat completions via src/llm.py
+openai
+
+# LangChain text splitters — chunk documents into overlapping passages
+langchain-text-splitters
+
+# MongoDB — passages, metadata, and vectors
+pymongo
+
+# AWS S3 — raw document storage
+boto3
+
+# Environment variable management — loads .env into os.environ
+python-dotenv
