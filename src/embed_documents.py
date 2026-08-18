@@ -13,7 +13,6 @@ import sys
 import boto3
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pymongo import MongoClient
 
 from config import (
     CHUNK_OVERLAP,
@@ -23,6 +22,7 @@ from config import (
 )
 from documents import parse_document, passage_records
 from llm import get_provider
+from mongo import get_collection
 
 load_dotenv()
 
@@ -32,9 +32,6 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
     region_name=os.getenv("AWS_REGION"),
 )
-mongo_client = MongoClient(os.getenv("MONGODB_URI"))
-collection = mongo_client[os.getenv("MONGODB_DB", "policy_assistant")][PASSAGES_COLLECTION]
-
 # Splits on paragraph, then line, then sentence boundaries before resorting to a
 # hard character cut, so a chunk usually ends somewhere meaningful. The overlap
 # keeps a clause that straddles a boundary intact in at least one chunk.
@@ -65,6 +62,7 @@ def fetch_documents_from_s3() -> list[tuple[str, str]]:
 
 
 def embed_and_store() -> None:
+    collection = get_collection(PASSAGES_COLLECTION)
     documents = fetch_documents_from_s3()
     if not documents:
         sys.exit(

@@ -1,36 +1,43 @@
-"""Single shared MongoDB client for the entire backend.
+"""Collection handles for the backend.
 
-All route modules import collections from here instead of each creating their
-own MongoClient. This avoids spinning up multiple connection pools against the
-same cluster — which matters on a free-tier Atlas deployment with a low
-connection cap — and keeps index creation in one place.
+The client itself lives in `src/mongo.py` and is shared with the ingestion
+scripts, so the whole process holds exactly one connection pool. See that
+module for the connection budget and the fork-safety reasoning.
+
+Index creation is deliberately *not* run at import. It performs real I/O, and
+doing I/O at import means a database problem surfaces as an confusing traceback
+during module loading rather than as a clear startup failure. `main.py` calls
+`ensure_indexes()` from the application lifespan instead.
 """
 import os
 import sys
 
-from pymongo import ASCENDING, DESCENDING, MongoClient
+from pymongo import ASCENDING, DESCENDING
 
-# src/ holds the RAG pipeline and its config; the backend reads both.
+# src/ holds the RAG pipeline, its config, and the shared Mongo client.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from config import PASSAGES_COLLECTION  # noqa: E402
+from mongo import get_collection  # noqa: E402
 
-_client = MongoClient(os.getenv("MONGODB_URI"))
-_db = _client[os.getenv("MONGODB_DB", "policy_assistant")]
-
-conversations_col = _db["conversations"]
-projects_col = _db["projects"]
+# Constructing a collection handle performs no I/O — pymongo connects on the
+# first real operation — so binding these at import is safe.
+conversations_col = get_collection("conversations")
+projects_col = get_collection("projects")
 
 # One record per passage: text, metadata, and embedding together.
-passages_col = _db[PASSAGES_COLLECTION]
+passages_col = get_collection(PASSAGES_COLLECTION)
 
 # Denormalized one-record-per-document view, built from passages_col. Kept
 # separate so browsing and searching the corpus never scans the passage
 # collection, which carries a 1536-float vector on every record.
-documents_col = _db["documents"]
+documents_col = get_collection("documents")
 
 
 def ensure_indexes() -> None:
     """Create indexes if they don't already exist (idempotent).
+
+    Called once per worker at startup. Concurrent calls across workers are safe:
+    `create_index` with identical options is a no-op.
 
     Note this cannot create the Atlas Vector Search index — that is a search
     index, not a regular one, and must be created in the Atlas UI or CLI. See
@@ -50,7 +57,3 @@ def ensure_indexes() -> None:
     documents_col.create_index("source", unique=True)
     documents_col.create_index([("title", ASCENDING)])
     documents_col.create_index([("category", ASCENDING)])
-
-
-# Run once at import time — all no-ops after the first run
-ensure_indexes()

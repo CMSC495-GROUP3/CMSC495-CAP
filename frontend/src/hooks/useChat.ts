@@ -90,7 +90,6 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
         onSessionCreated(sid)
       }
 
-      const history = messages.map((m) => ({ role: m.role, content: m.content, sources: m.sources ?? [] }))
       const token = localStorage.getItem(TOKEN_KEY) ?? ''
 
       const response = await fetch('/api/chat/stream', {
@@ -99,7 +98,10 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ question, session_id: sid, chat_history: history }),
+        // History is deliberately NOT sent. The server reads it from the
+        // conversation record, so a client cannot inject forged turns into the
+        // prompt. See the module docstring in backend/routes/chat.py.
+        body: JSON.stringify({ question, session_id: sid }),
       })
 
       if (!response.ok || !response.body) {

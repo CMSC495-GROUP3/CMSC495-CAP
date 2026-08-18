@@ -15,7 +15,6 @@ Two guarantees the rest of the application depends on:
 import os
 
 from dotenv import load_dotenv
-from pymongo import MongoClient
 
 from config import (
     CONDENSE_TURNS,
@@ -28,11 +27,9 @@ from config import (
     VECTOR_INDEX_NAME,
 )
 from llm import get_provider
+from mongo import get_collection
 
 load_dotenv()
-
-mongo_client = MongoClient(os.getenv("MONGODB_URI"))
-collection = mongo_client[os.getenv("MONGODB_DB", "policy_assistant")][PASSAGES_COLLECTION]
 
 
 ANSWER_SYSTEM_PROMPT = (
@@ -58,7 +55,7 @@ def retrieve_passages(query: str, k: int = RETRIEVAL_K) -> list[dict]:
     """
     query_embedding = get_provider().embed(query)
 
-    results = collection.aggregate([
+    results = get_collection(PASSAGES_COLLECTION).aggregate([
         {
             "$vectorSearch": {
                 "index": VECTOR_INDEX_NAME,

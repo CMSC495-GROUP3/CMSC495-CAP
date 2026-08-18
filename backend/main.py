@@ -19,6 +19,8 @@ if _missing:
         f"Generate a JWT secret with: openssl rand -hex 32"
     )
 
+from contextlib import asynccontextmanager  # noqa: E402
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from config import APP_NAME, SIMILARITY_THRESHOLD  # noqa: E402
 
@@ -27,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
+from db import ensure_indexes  # noqa: E402
 from limiter import limiter  # noqa: E402
 from routes.auth import router as auth_router  # noqa: E402
 from routes.chat import router as chat_router  # noqa: E402
@@ -34,7 +37,25 @@ from routes.conversations import router as conversations_router  # noqa: E402
 from routes.documents import router as documents_router  # noqa: E402
 from routes.projects import router as projects_router  # noqa: E402
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Startup work that touches the database.
+
+    Index creation used to run at import of db.py. Doing I/O at import means a
+    database problem surfaces as a traceback while modules are still loading,
+    which is hard to read and impossible to handle. Running it here makes a
+    failure a clear startup error instead.
+
+    This runs once per uvicorn worker. Concurrent create_index calls with
+    identical options are no-ops, so multiple workers racing is safe.
+    """
+    ensure_indexes()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=f"{APP_NAME} API",
     description="Grounded question answering over internal policy documents.",
     version="0.1.0",

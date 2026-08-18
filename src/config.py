@@ -23,6 +23,11 @@ S3_DOCUMENT_PREFIX = os.getenv("S3_DOCUMENT_PREFIX", "documents/")
 # proposal — it avoids pairing a vector store with a separate document store.
 PASSAGES_COLLECTION = os.getenv("PASSAGES_COLLECTION", "passages")
 
+# Connections held per process. Total load on the cluster is
+# (uvicorn workers x this), which must stay under the Atlas connection cap —
+# see the arithmetic in src/mongo.py before raising either number.
+MONGO_MAX_POOL_SIZE = int(os.getenv("MONGO_MAX_POOL_SIZE", "20"))
+
 # ── Chunking ──────────────────────────────────────────────────────────────────
 # Overlap preserves context across boundaries so a sentence split down the middle
 # still appears whole in one of the two neighbouring chunks.
