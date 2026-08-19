@@ -7,17 +7,20 @@ seeing that directly is faster than discovering it through a refusal.
 Reads from the denormalized documents collection rather than passages, so
 listing the corpus never touches the embedding vectors.
 """
+import os
 import re
+import sys
 
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ASCENDING, UpdateOne
 
-from db import documents_col, passages_col
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+from cache import bump_corpus_version, get_corpus_version  # noqa: E402
+
+from db import documents_col, meta_col, passages_col
 from routes.deps import require_auth
 
 router = APIRouter()
-
-_index_ready = False
 
 MAX_PAGE_SIZE = 200
 PREVIEW_LENGTH = 200
@@ -36,20 +39,31 @@ def _preview(text: str) -> str:
 
 
 def ensure_document_index() -> None:
-    """Build the documents collection from passages if it is empty.
+    """Rebuild the document library if it is older than the corpus.
 
-    Idempotent and cheap after the first call. The ingestion script writes only
-    passages, so this is what turns them into a browsable library without
-    requiring a second pipeline.
+    This used to be guarded by a module-level `_index_ready` flag plus an
+    is-it-empty check, which had two bugs. The flag was per-process, so with
+    multiple workers each one tracked its own idea of readiness. Worse, the
+    emptiness check meant that after a re-ingestion the collection was non-empty
+    but stale, so it was never rebuilt and the library silently served the
+    previous corpus until someone hit /reindex by hand.
+
+    Comparing a stored version against the corpus version fixes both: the state
+    lives in the database where every worker sees it, and a re-ingestion makes
+    the comparison fail, which triggers exactly one rebuild.
     """
-    global _index_ready
-    if _index_ready:
+    corpus_version = get_corpus_version()
+    built = meta_col.find_one({"_id": "documents_index"}, {"version": 1})
+
+    if built and built.get("version") == corpus_version:
         return
 
-    if documents_col.count_documents({}) == 0:
-        rebuild_document_index()
-
-    _index_ready = True
+    rebuild_document_index()
+    meta_col.update_one(
+        {"_id": "documents_index"},
+        {"$set": {"version": corpus_version}},
+        upsert=True,
+    )
 
 
 def rebuild_document_index() -> int:
@@ -152,8 +166,16 @@ def get_document_passages(source: str):
 
 @router.post("/documents/reindex", dependencies=[Depends(require_auth)])
 def reindex_documents():
-    """Rebuild the document library after re-running ingestion."""
+    """Force a rebuild of the document library and invalidate cached answers.
+
+    Bumping the corpus version is what clears the answer cache — entries are
+    keyed by it, so old ones simply stop matching.
+    """
     count = rebuild_document_index()
-    global _index_ready
-    _index_ready = True
-    return {"ok": True, "documents": count}
+    version = bump_corpus_version()
+    meta_col.update_one(
+        {"_id": "documents_index"},
+        {"$set": {"version": version}},
+        upsert=True,
+    )
+    return {"ok": True, "documents": count, "corpus_version": version}

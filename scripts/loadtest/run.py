@@ -20,6 +20,7 @@ import asyncio
 import json
 import statistics
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -48,10 +49,11 @@ def mint_token(secret: str) -> str:
 
 
 class Result:
-    __slots__ = ("ttfb", "total", "error", "chunks")
+    __slots__ = ("ttfb", "total", "error", "chunks", "cached")
 
-    def __init__(self, ttfb=None, total=None, error=None, chunks=0):
-        self.ttfb, self.total, self.error, self.chunks = ttfb, total, error, chunks
+    def __init__(self, ttfb=None, total=None, error=None, chunks=0, cached=False):
+        self.ttfb, self.total, self.error = ttfb, total, error
+        self.chunks, self.cached = chunks, cached
 
 
 async def one_stream(client: httpx.AsyncClient, url: str, token: str,
@@ -79,7 +81,8 @@ async def one_stream(client: httpx.AsyncClient, url: str, token: str,
                 elif "error" in payload:
                     return Result(error=payload["error"])
                 elif payload.get("done"):
-                    return Result(ttfb=ttfb, total=time.perf_counter() - started, chunks=chunks)
+                    return Result(ttfb=ttfb, total=time.perf_counter() - started,
+                                  chunks=chunks, cached=bool(payload.get("cached")))
     except Exception as exc:  # noqa: BLE001 — any client-side failure is a failed stream
         return Result(error=f"{type(exc).__name__}: {exc}")
     # Stream ended without a `done` event.
@@ -95,14 +98,18 @@ def pct(values: list[float], p: float) -> float:
     return ordered[index]
 
 
-async def run_level(url: str, token: str, concurrency: int) -> dict:
+async def run_level(url: str, token: str, concurrency: int, run_id: str) -> dict:
     limits = httpx.Limits(max_connections=concurrency + 10,
                           max_keepalive_connections=concurrency + 10)
     async with httpx.AsyncClient(limits=limits) as client:
         wall_start = time.perf_counter()
         results = await asyncio.gather(*[
+            # Session ids must be unique per run. Reusing them means the second
+            # run's conversations already have history, which correctly
+            # disqualifies them from the first-turn answer cache — and would
+            # silently measure the uncached path while looking like a cache test.
             one_stream(client, url, token,
-                       QUESTIONS[i % len(QUESTIONS)], f"load-{concurrency}-{i}")
+                       QUESTIONS[i % len(QUESTIONS)], f"load-{run_id}-{concurrency}-{i}")
             for i in range(concurrency)
         ])
         wall = time.perf_counter() - wall_start
@@ -122,6 +129,7 @@ async def run_level(url: str, token: str, concurrency: int) -> dict:
         "errors": errors,
         "wall": wall,
         "throughput": len(ok) / wall if wall else 0,
+        "cache_hits": sum(1 for r in ok if r.cached),
         "ttfb_p50": pct(ttfbs, 50), "ttfb_p95": pct(ttfbs, 95), "ttfb_max": max(ttfbs, default=float("nan")),
         "total_p50": pct(totals, 50), "total_p95": pct(totals, 95),
         "gen_p50": statistics.median([t - f for t, f in zip(totals, ttfbs)]) if ttfbs and totals else float("nan"),
@@ -134,21 +142,25 @@ async def main() -> None:
     parser.add_argument("--secret", default="loadtest-secret-not-for-real-use")
     parser.add_argument("--concurrency", type=int, nargs="+", default=[10, 20, 40, 80, 160])
     parser.add_argument("--label", default="")
+    parser.add_argument("--run-id", default="",
+                        help="Reuse a previous run's id to hit an already-warm answer cache.")
     args = parser.parse_args()
 
     token = mint_token(args.secret)
+    run_id = args.run_id or uuid.uuid4().hex[:8]
 
-    print(f"\n  {args.label or 'load test'}  ->  {args.url}\n")
-    header = f"  {'conc':>5} {'ok':>5} {'fail':>5} {'TTFB p50':>10} {'TTFB p95':>10} {'TTFB max':>10} {'gen p50':>9} {'req/s':>7}"
+    print(f"\n  {args.label or 'load test'}  ->  {args.url}   (run id {run_id})\n")
+    header = f"  {'conc':>5} {'ok':>5} {'fail':>5} {'cached':>7} {'TTFB p50':>10} {'TTFB p95':>10} {'gen p50':>9} {'req/s':>7}"
     print(header)
     print("  " + "-" * (len(header) - 2))
 
     rows = []
     for level in args.concurrency:
-        row = await run_level(args.url, token, level)
+        row = await run_level(args.url, token, level, run_id)
         rows.append(row)
         print(f"  {row['concurrency']:>5} {row['completed']:>5} {row['failed']:>5} "
-              f"{row['ttfb_p50']:>9.2f}s {row['ttfb_p95']:>9.2f}s {row['ttfb_max']:>9.2f}s "
+              f"{row['cache_hits']:>7} "
+              f"{row['ttfb_p50']:>9.2f}s {row['ttfb_p95']:>9.2f}s "
               f"{row['gen_p50']:>8.2f}s {row['throughput']:>7.1f}")
         if row["errors"]:
             for message, count in row["errors"].items():

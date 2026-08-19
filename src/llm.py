@@ -68,6 +68,22 @@ class LLMProvider(ABC):
     ) -> Iterator[str]:
         """Yield response text incrementally, one delta at a time."""
 
+    # ── Cache fingerprints ────────────────────────────────────────────────────
+    # Cache keys must change when the underlying model changes, or a model swap
+    # would serve results produced by the previous one. These exist so that
+    # cache code never has to know a model name — that stays in this file.
+    #
+    # Both have working defaults, so adding a provider does not require writing
+    # them. Override when a provider can be configured with different models.
+
+    def embedding_fingerprint(self) -> str:
+        """Identifies the embedding model, for the embedding cache key."""
+        return self.name
+
+    def answer_fingerprint(self) -> str:
+        """Identifies the answer model, for the answer cache key."""
+        return self.name
+
 
 class OpenAIProvider(LLMProvider):
     """OpenAI-backed implementation — the default for the pilot."""
@@ -94,6 +110,12 @@ class OpenAIProvider(LLMProvider):
 
     def _model_for(self, role: ModelRole) -> str:
         return self.ANSWER_MODEL if role == "answer" else self.UTILITY_MODEL
+
+    def embedding_fingerprint(self) -> str:
+        return f"{self.name}:{self.EMBEDDING_MODEL}"
+
+    def answer_fingerprint(self) -> str:
+        return f"{self.name}:{self.ANSWER_MODEL}" 
 
     def embed(self, text: str) -> list[float]:
         response = self._client.embeddings.create(

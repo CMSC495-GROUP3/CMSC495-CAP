@@ -91,6 +91,54 @@ Memory cost, measured at 320 concurrent streams:
 **~105 KB of RSS per thread** — far below the 8 MB virtual stack size, because
 Python threads only commit the pages they touch.
 
+## Finding 4 — a client that hangs up on `done` lost its exchange entirely
+
+The load harness returns as soon as it sees the `done` event, which closes the
+connection. That is reasonable client behaviour: the answer is complete, so
+there is nothing left to read except the follow-up suggestions.
+
+Doing so raised `GeneratorExit` at the suspended `yield` inside `_stream`, and
+every statement after that yield was skipped — `_persist`, `put_cached_answer`,
+and `log_query` all lived there. The user saw a complete, correct answer that
+the server had no record of: not saved to the conversation, not cached, and
+absent from the analytics this system is supposed to learn from.
+
+It surfaced as "the cache never hits under load" and was initially mistaken for
+a cache bug. The bookkeeping now runs from a `finally` block, which executes
+during generator close, so an abandoned stream is still recorded.
+
+This is the same hazard that would have appeared — harder to diagnose — after an
+async conversion, where a disconnect becomes task cancellation at an `await`.
+
+## Finding 5 — cached answers are roughly an order of magnitude cheaper
+
+Same concurrency, same questions, differing only in whether the answer cache
+was warm:
+
+| path | 80 concurrent | 160 concurrent |
+|---|---|---|
+| first turn, cache miss (generates) | ~15 req/s | ~36 req/s |
+| first turn, cache hit | 210 req/s | 343-522 req/s |
+| follow-up turn (has history, never cached) | — | ~20 req/s |
+
+Cached responses run **6-14x** the generated path. Measured hit latency was
+0.11s against 3.03s for a generation — a 29x improvement for the user.
+
+Follow-up turns are slower than first turns even on a miss, because a turn with
+history pays an extra utility model call to rewrite the question into a
+standalone retrieval query. That call is skipped on first turns.
+
+Two caveats. The spread in the cached numbers (210-522 req/s) is wide because at
+these levels the harness itself becomes a factor — opening 320 sockets at once
+from one Python process produced a TTFB spike that the server did not cause.
+And the fake model makes a miss cheaper than reality, so the real-world ratio
+between hit and miss is larger, not smaller.
+
+The practical consequence is that **cache hit rate is the main lever on cost**.
+At 83 req/s and ~$0.01 per generated query, every 10 points of hit rate is
+roughly $300/hour. `query_logs.cache_hit` records the achieved rate so this can
+be measured rather than assumed.
+
 ## Conclusion
 
 **A single worker with a larger thread pool clears the 83 req/s target.** At 320

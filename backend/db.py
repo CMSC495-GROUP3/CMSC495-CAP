@@ -16,7 +16,12 @@ from pymongo import ASCENDING, DESCENDING
 
 # src/ holds the RAG pipeline, its config, and the shared Mongo client.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from config import PASSAGES_COLLECTION  # noqa: E402
+from config import (  # noqa: E402
+    ANSWER_CACHE_TTL_SECONDS,
+    EMBEDDING_CACHE_TTL_SECONDS,
+    PASSAGES_COLLECTION,
+    QUERY_LOG_TTL_SECONDS,
+)
 from mongo import get_collection  # noqa: E402
 
 # Constructing a collection handle performs no I/O — pymongo connects on the
@@ -31,6 +36,17 @@ passages_col = get_collection(PASSAGES_COLLECTION)
 # separate so browsing and searching the corpus never scans the passage
 # collection, which carries a 1536-float vector on every record.
 documents_col = get_collection("documents")
+
+# One record per chat request. The substrate for content-gap and FAQ analytics.
+query_logs_col = get_collection("query_logs")
+
+# Caches. Keyed by content hash on _id, so no separate unique index is needed.
+answer_cache_col = get_collection("answer_cache")
+embedding_cache_col = get_collection("embedding_cache")
+
+# Single-document collection holding the corpus version. No index needed — it
+# is only ever read by _id.
+meta_col = get_collection("meta")
 
 
 def ensure_indexes() -> None:
@@ -57,3 +73,28 @@ def ensure_indexes() -> None:
     documents_col.create_index("source", unique=True)
     documents_col.create_index([("title", ASCENDING)])
     documents_col.create_index([("category", ASCENDING)])
+
+    # query_logs — three access patterns:
+    #   created_at        windowed counts, and the TTL that keeps this bounded
+    #   refused + time    the content-gap query ("what did we fail to answer?")
+    #   hash + time       grouping repeats into a ranked FAQ list
+    #
+    # The TTL is not housekeeping. At the 83 req/s target this collection would
+    # grow by roughly 7M documents a day.
+    query_logs_col.create_index(
+        [("created_at", DESCENDING)], expireAfterSeconds=QUERY_LOG_TTL_SECONDS
+    )
+    query_logs_col.create_index([("refused", ASCENDING), ("created_at", DESCENDING)])
+    query_logs_col.create_index([("question_hash", ASCENDING), ("created_at", DESCENDING)])
+
+    # Caches — expiry only. Lookups are by _id, which is indexed implicitly.
+    #
+    # NOTE: changing any expireAfterSeconds above or below raises
+    # IndexOptionsConflict on an existing index. MongoDB requires collMod to
+    # change a TTL; drop the index first if you need to adjust one.
+    answer_cache_col.create_index(
+        [("created_at", ASCENDING)], expireAfterSeconds=ANSWER_CACHE_TTL_SECONDS
+    )
+    embedding_cache_col.create_index(
+        [("created_at", ASCENDING)], expireAfterSeconds=EMBEDDING_CACHE_TTL_SECONDS
+    )

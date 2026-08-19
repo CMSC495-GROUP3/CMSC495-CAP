@@ -168,6 +168,7 @@ and reproduction steps in [RESULTS.md](scripts/loadtest/RESULTS.md)):
 | `THREADPOOL_TOKENS=100` (current default) | 33.5 req/s |
 | `THREADPOOL_TOKENS=320` | 98.7 req/s |
 | refusal path (no generation) | ~700 req/s |
+| answer served from cache | 210-522 req/s |
 
 The bottleneck is the thread pool. Starlette iterates a sync SSE generator via
 `iterate_in_threadpool`, acquiring a thread per yield, so each stream consumes
@@ -186,6 +187,31 @@ The honest caveat: the harness stubs the model and the database, and real
 generation latency is slower and far more variable than the 2.5s used here.
 Cost and provider rate limits bind well before the server does — at 83 req/s and
 ~$0.01/query, roughly $3,000/hour.
+
+## Learning from interaction patterns
+
+Every chat request writes one `query_logs` record: the question, its hash, the
+best and mean retrieval scores, whether it was refused, which documents were
+cited, whether it was a cache hit, and how long it took.
+
+That log is what lets the system improve from evidence rather than intuition:
+
+- **Refusals grouped by question hash are a ranked list of the documents HR
+  should write next.** This is the closest thing here to learning — the corpus
+  gets better because the logs showed where it was thin.
+- **Repeated questions rank into an FAQ**, identifying answers worth curating.
+- **The score distribution of answered versus refused questions** is the only
+  honest basis for tuning `SIMILARITY_THRESHOLD`, and it cannot be collected any
+  other way.
+
+This is deliberately not fine-tuning. Retraining on interaction data would
+contradict the reason RAG was chosen — that the system must absorb new documents
+without retraining — and no pilot produces the volume it would need. Improving
+what gets retrieved, and knowing what to write next, delivers the same intent
+with none of that cost.
+
+Logging never breaks a request: an analytics failure is logged and swallowed
+rather than turning a working answer into an error.
 
 ## Computational problem-solving
 

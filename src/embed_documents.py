@@ -20,6 +20,7 @@ from config import (
     PASSAGES_COLLECTION,
     S3_DOCUMENT_PREFIX,
 )
+from cache import bump_corpus_version
 from documents import parse_document, passage_records
 from llm import get_provider
 from mongo import get_collection
@@ -90,7 +91,11 @@ def embed_and_store() -> None:
 
         print(f"  {document['title']:<45} {len(records):>3} passages")
 
+    # Changing the corpus version invalidates every cached answer, because the
+    # version is part of the cache key. Nothing needs to be deleted.
+    version = bump_corpus_version()
     print(f"\nDone. {len(documents)} documents → {total} passages in MongoDB.")
+    print(f"Corpus version now {version[:8]} — cached answers invalidated.")
     print(
         "\nIf you have not created it yet, add an Atlas Vector Search index named "
         f"'{os.getenv('VECTOR_INDEX_NAME', 'vector_index')}' on the "

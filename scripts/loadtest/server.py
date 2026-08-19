@@ -41,6 +41,7 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT / "backend"))
 sys.path.insert(0, str(_ROOT / "src"))
@@ -85,35 +86,26 @@ def _sleep_db() -> None:
         time.sleep(DB_LATENCY_MS / 1000)
 
 
-class InMemoryConversations:
-    """Stands in for `conversations_col`.
+class LatentCollection:
+    """Wraps a FakeCollection to add a simulated database round-trip.
 
-    Implements only the two operations the chat path uses. Deliberately not a
-    general Mongo emulator — a partial fake that is obviously partial is safer
-    than one that looks complete and diverges under load.
+    Without this the stub is free, which would understate how much thread-time
+    a real request spends waiting on Atlas.
     """
 
-    def __init__(self) -> None:
-        self._docs: dict[str, dict] = {}
+    def __init__(self, inner):
+        self._inner = inner
 
-    def find_one(self, filt: dict, projection: dict | None = None) -> dict | None:
-        _sleep_db()
-        return self._docs.get(filt.get("session_id"))
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr):
+            return attr
 
-    def update_one(self, filt: dict, update: dict, upsert: bool = False) -> None:
-        _sleep_db()
-        session_id = filt.get("session_id")
-        doc = self._docs.get(session_id)
-        if doc is None:
-            if not upsert:
-                return
-            doc = {"session_id": session_id, "messages": []}
-            self._docs[session_id] = doc
+        def timed(*args, **kwargs):
+            _sleep_db()
+            return attr(*args, **kwargs)
 
-        for field, value in update.get("$set", {}).items():
-            doc[field] = value
-        for field, spec in update.get("$push", {}).items():
-            doc.setdefault(field, []).extend(spec["$each"] if "$each" in spec else [spec])
+        return timed
 
 
 def _fake_retrieve(query: str, k: int = 5) -> list[dict]:
@@ -121,6 +113,20 @@ def _fake_retrieve(query: str, k: int = 5) -> list[dict]:
     _sleep_db()
     return [dict(p) for p in CANNED_PASSAGES[:k]]
 
+
+# Route every collection through the in-memory fake before importing the app,
+# so db.py's module-level handles bind to fakes rather than to a real cluster.
+from fakemongo import FakeDB  # noqa: E402
+
+import mongo  # noqa: E402
+
+_FAKE_DB = FakeDB()
+mongo.get_db = lambda: _FAKE_DB
+mongo.get_collection = lambda name: LatentCollection(_FAKE_DB[name])
+
+import cache  # noqa: E402
+
+cache.get_collection = mongo.get_collection
 
 import main  # noqa: E402
 import routes.chat as chat_routes  # noqa: E402
@@ -143,8 +149,8 @@ def _startup() -> None:
 main.ensure_indexes = _startup
 
 # routes/chat.py binds these names at import, so patch them there rather than
-# on the modules they came from.
-chat_routes.conversations_col = InMemoryConversations()
+# on the modules they came from. Vector search is the one thing the fake cannot
+# emulate, so it is replaced outright.
 chat_routes.retrieve_passages = _fake_retrieve
 
 app = main.app

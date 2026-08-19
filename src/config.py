@@ -82,6 +82,36 @@ REFUSAL_MESSAGE = (
 # changing it, and re-measure rather than guessing.
 THREADPOOL_TOKENS = int(os.getenv("THREADPOOL_TOKENS", "100"))
 
+# ── Caching ───────────────────────────────────────────────────────────────────
+# The product premise is that the same questions get asked repeatedly, so the
+# answer cache is the main lever on both cost and latency. Both caches live in
+# MongoDB rather than Redis: they are shared across workers, survive restarts,
+# and expire for free via TTL indexes, with no extra service to operate.
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "1") not in ("0", "false", "False")
+
+# Answers are cached under a key that includes the corpus version, so
+# re-ingestion invalidates every entry passively — there is no cache-clearing
+# code to get wrong. Short TTL on top of that as a cheap staleness bound.
+ANSWER_CACHE_TTL_SECONDS = int(os.getenv("ANSWER_CACHE_TTL_SECONDS", str(24 * 3600)))
+
+# A query's embedding does not depend on the corpus, so these survive
+# re-ingestion and can live much longer.
+EMBEDDING_CACHE_TTL_SECONDS = int(os.getenv("EMBEDDING_CACHE_TTL_SECONDS", str(30 * 86400)))
+
+# Bump this whenever ANSWER_SYSTEM_PROMPT changes. It is part of the answer
+# cache key, so without a bump a prompt fix would keep serving pre-fix answers
+# until the TTL expired.
+PROMPT_VERSION = os.getenv("PROMPT_VERSION", "v1")
+
+# ── Analytics ─────────────────────────────────────────────────────────────────
+# Every chat request writes one query_logs record. This is the substrate for
+# "learn from interaction patterns": refusals cluster into content gaps, and
+# repeated questions rank into the FAQ list.
+#
+# At the 83 req/s target this collection grows by roughly 7M documents a day,
+# so the TTL is mandatory rather than tidy-up.
+QUERY_LOG_TTL_SECONDS = int(os.getenv("QUERY_LOG_TTL_SECONDS", str(90 * 86400)))
+
 # ── Conversation limits ───────────────────────────────────────────────────────
 # Turns of history replayed to the model, and turns used to rewrite a follow-up
 # into a standalone retrieval query.

@@ -26,6 +26,7 @@ from config import (
     SIMILARITY_THRESHOLD,
     VECTOR_INDEX_NAME,
 )
+from cache import embed_cached
 from llm import get_provider
 from mongo import get_collection
 
@@ -52,8 +53,11 @@ def retrieve_passages(query: str, k: int = RETRIEVAL_K) -> list[dict]:
 
     Each result carries its stored metadata alongside the text, which is what
     lets the answer cite a document title rather than an S3 key.
+
+    Query embeddings are cached. Ingestion deliberately does not go through this
+    path — every passage there is unique, so caching would only bloat storage.
     """
-    query_embedding = get_provider().embed(query)
+    query_embedding, _ = embed_cached(query)
 
     results = get_collection(PASSAGES_COLLECTION).aggregate([
         {

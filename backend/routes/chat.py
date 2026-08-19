@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -29,6 +30,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+from cache import (  # noqa: E402
+    get_cached_answer,
+    get_corpus_version,
+    is_cacheable_turn,
+    put_cached_answer,
+)
 from config import HISTORY_TURNS, REFUSAL_MESSAGE  # noqa: E402
 from llm import get_provider  # noqa: E402
 from rag_chain import (  # noqa: E402
@@ -41,6 +48,7 @@ from rag_chain import (  # noqa: E402
     retrieve_passages,
 )
 
+from analytics import log_query
 from db import conversations_col
 from routes.deps import require_auth
 
@@ -129,34 +137,49 @@ def _persist(session_id: str | None, question: str, answer: str,
 
 
 def _answer(question: str, history: list[dict]) -> dict:
-    """Retrieve, gate, and generate. Shared by both chat routes."""
+    """Retrieve, gate, and generate. Shared by both chat routes.
+
+    Returns the result plus `passages` and `cache_hit` for the query log.
+    """
+    corpus_version = get_corpus_version()
+
+    if is_cacheable_turn(history):
+        cached = get_cached_answer(question, corpus_version)
+        if cached is not None:
+            return {**cached, "passages": [], "cache_hit": "answer"}
+
     retrieval_query = condense_question(question, history)
     passages = retrieve_passages(retrieval_query)
     confidence = confidence_score(passages)
 
     if not is_grounded(passages):
-        return {
+        result = {
             "answer": REFUSAL_MESSAGE,
             "sources": [],
             "confidence": confidence,
             "follow_ups": [],
             "refused": True,
-            "passages": passages,
+        }
+    else:
+        answer = get_provider().complete(
+            build_messages(question, passages, history),
+            role="answer",
+            temperature=0,
+        )
+        result = {
+            "answer": answer,
+            "sources": cited_sources(passages),
+            "confidence": confidence,
+            "follow_ups": generate_follow_ups(question, answer),
+            "refused": False,
         }
 
-    answer = get_provider().complete(
-        build_messages(question, passages, history),
-        role="answer",
-        temperature=0,
-    )
-    return {
-        "answer": answer,
-        "sources": cited_sources(passages),
-        "confidence": confidence,
-        "follow_ups": generate_follow_ups(question, answer),
-        "refused": False,
-        "passages": passages,
-    }
+    # Refusals are cached too. A re-ingestion that adds the missing policy
+    # changes the corpus version, so the stored refusal stops matching.
+    if is_cacheable_turn(history):
+        put_cached_answer(question, corpus_version, result)
+
+    return {**result, "passages": passages, "cache_hit": None}
 
 
 # ── Non-streaming ─────────────────────────────────────────────────────────────
@@ -166,6 +189,7 @@ def chat(body: ChatRequest):
     """Non-streaming variant. Kept for testing and as a fallback; the UI uses
     the streaming route."""
     history = load_history(body.session_id)
+    started = time.perf_counter()
     try:
         result = _answer(body.question, history)
     except Exception:
@@ -178,6 +202,17 @@ def chat(body: ChatRequest):
 
     _persist(body.session_id, body.question, result["answer"],
              result["sources"], result["confidence"], result["refused"])
+
+    log_query(
+        session_id=body.session_id,
+        question=body.question,
+        condensed_question=body.question,
+        passages=result["passages"],
+        refused=result["refused"],
+        sources=result["sources"],
+        cache_hit=result["cache_hit"],
+        latency_ms=int((time.perf_counter() - started) * 1000),
+    )
 
     return ChatResponse(
         answer=result["answer"],
@@ -195,55 +230,150 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+# A cached answer is replayed in this many pieces. The protocol is identical to
+# a live generation so the client cannot tell the difference, but there is no
+# artificial delay — the whole point is that it arrives immediately.
+CACHED_REPLAY_CHUNKS = 8
+
+
+def _finalize(body: ChatRequest, state: dict, corpus_version: str,
+              history: list[dict], started: float) -> None:
+    """Persist, cache, and log one exchange. Runs exactly once.
+
+    This is called from a `finally` block rather than after the last yield, and
+    that placement is the whole point. Starlette drives this generator by
+    calling next() until it is exhausted; if the client disconnects first — and
+    a well-behaved client may well hang up the moment it sees the `done` event,
+    because the answer is complete — the generator is closed instead. A
+    GeneratorExit is raised at the suspended yield and every statement after it
+    is skipped.
+
+    With the bookkeeping after the last yield, that meant an abandoned stream
+    was never saved to the conversation, never cached, and never logged. The
+    user saw a complete answer that the server had no record of, and the
+    analytics this system is meant to learn from had a silent hole in them.
+
+    A finally block runs during GeneratorExit, so the work happens either way.
+    Nothing here may yield — that would raise RuntimeError during close.
+    """
+    if state["finalized"]:
+        return
+    state["finalized"] = True
+
+    # Nothing worth recording if generation failed before producing anything.
+    if not state["answer"]:
+        return
+
+    _persist(body.session_id, body.question, state["answer"], state["sources"],
+             state["confidence"], state["refused"])
+
+    if state["cache_hit"] is None and is_cacheable_turn(history):
+        put_cached_answer(body.question, corpus_version, {
+            "answer": state["answer"],
+            "sources": state["sources"],
+            "confidence": state["confidence"],
+            "follow_ups": state["follow_ups"],
+            "refused": state["refused"],
+        })
+
+    log_query(
+        session_id=body.session_id,
+        question=body.question,
+        condensed_question=state["condensed"],
+        passages=state["passages"],
+        refused=state["refused"],
+        sources=state["sources"],
+        cache_hit=state["cache_hit"],
+        latency_ms=int((time.perf_counter() - started) * 1000),
+    )
+
+
 def _stream(body: ChatRequest):
     """Sync SSE generator.
 
-    FastAPI runs sync routes in a thread pool, so blocking here does not stall
-    the event loop. Each yield pushes one SSE message to the browser.
+    Starlette iterates this through the thread pool, acquiring a thread per
+    yield, so a stream consumes roughly its generation duration in thread-time.
+    THREADPOOL_TOKENS in src/config.py sizes that pool and therefore caps chat
+    throughput — see scripts/loadtest/RESULTS.md for the measured curve.
 
-    NOTE: this holds one thread-pool slot for the entire generation, which caps
-    concurrent streams at the anyio default of 40 per process. Converting this
-    path to async is the next planned change.
+    All bookkeeping happens in _finalize via `finally`; see the note there on
+    why it cannot live after the last yield.
     """
+    started = time.perf_counter()
     history = load_history(body.session_id)
+    corpus_version = get_corpus_version()
 
-    retrieval_query = condense_question(body.question, history)
-    passages = retrieve_passages(retrieval_query)
-    confidence = confidence_score(passages)
+    state = {
+        "answer": "", "sources": [], "confidence": None, "refused": False,
+        "follow_ups": [], "passages": [], "cache_hit": None,
+        "condensed": body.question, "finalized": False,
+    }
 
-    # Grounding gate — below the threshold we decline without generating.
-    if not is_grounded(passages):
-        logger.info(
-            "Refused: best score %.3f below threshold for session %s",
-            max((p.get("score", 0.0) for p in passages), default=0.0),
-            body.session_id,
-        )
-        yield _sse({"chunk": REFUSAL_MESSAGE})
-        yield _sse({"done": True, "sources": [], "confidence": confidence, "refused": True})
-        _persist(body.session_id, body.question, REFUSAL_MESSAGE, [], confidence, True)
-        return
-
-    sources = cited_sources(passages)
-    messages = build_messages(body.question, passages, history)
-
-    full_answer = ""
     try:
-        for delta in get_provider().stream(messages, role="answer", temperature=0):
-            full_answer += delta
-            yield _sse({"chunk": delta})
-    except Exception:
-        logger.exception("Generation failed for session %s", body.session_id)
-        yield _sse({"error": "An error occurred while generating the response."})
-        return
+        # Cache is consulted on first turns only — see is_cacheable_turn().
+        if is_cacheable_turn(history):
+            cached = get_cached_answer(body.question, corpus_version)
+            if cached is not None:
+                state.update(
+                    answer=cached["answer"], sources=cached["sources"],
+                    confidence=cached["confidence"], refused=cached["refused"],
+                    follow_ups=cached["follow_ups"], cache_hit="answer",
+                )
+                text = cached["answer"]
+                size = max(1, len(text) // CACHED_REPLAY_CHUNKS)
+                for offset in range(0, len(text), size):
+                    yield _sse({"chunk": text[offset:offset + size]})
+                yield _sse({"done": True, "sources": cached["sources"],
+                            "confidence": cached["confidence"],
+                            "refused": cached["refused"], "cached": True})
+                if cached["follow_ups"]:
+                    yield _sse({"follow_ups": cached["follow_ups"]})
+                return
 
-    # Sources and confidence are already known — send them the moment the
-    # answer finishes rather than waiting on the follow-up call.
-    yield _sse({"done": True, "sources": sources, "confidence": confidence, "refused": False})
+        retrieval_query = condense_question(body.question, history)
+        passages = retrieve_passages(retrieval_query)
+        state["condensed"] = retrieval_query
+        state["passages"] = passages
+        state["confidence"] = confidence_score(passages)
 
-    # Follow-ups need a second model call, so they arrive as their own event.
-    yield _sse({"follow_ups": generate_follow_ups(body.question, full_answer)})
+        # Grounding gate — below the threshold we decline without generating.
+        if not is_grounded(passages):
+            logger.info(
+                "Refused: best score %.3f below threshold for session %s",
+                max((p.get("score", 0.0) for p in passages), default=0.0),
+                body.session_id,
+            )
+            state.update(answer=REFUSAL_MESSAGE, refused=True)
+            yield _sse({"chunk": REFUSAL_MESSAGE})
+            yield _sse({"done": True, "sources": [],
+                        "confidence": state["confidence"], "refused": True})
+            return
 
-    _persist(body.session_id, body.question, full_answer, sources, confidence, False)
+        state["sources"] = cited_sources(passages)
+        messages = build_messages(body.question, passages, history)
+
+        try:
+            for delta in get_provider().stream(messages, role="answer", temperature=0):
+                state["answer"] += delta
+                yield _sse({"chunk": delta})
+        except Exception:
+            logger.exception("Generation failed for session %s", body.session_id)
+            # Discard the partial answer so a truncated response is never
+            # persisted or cached as if it were complete.
+            state["answer"] = ""
+            yield _sse({"error": "An error occurred while generating the response."})
+            return
+
+        # Sources and confidence are already known — send them the moment the
+        # answer finishes rather than waiting on the follow-up call.
+        yield _sse({"done": True, "sources": state["sources"],
+                    "confidence": state["confidence"], "refused": False})
+
+        # Follow-ups need a second model call, so they arrive as their own event.
+        state["follow_ups"] = generate_follow_ups(body.question, state["answer"])
+        yield _sse({"follow_ups": state["follow_ups"]})
+    finally:
+        _finalize(body, state, corpus_version, history, started)
 
 
 @router.post("/chat/stream", dependencies=[Depends(require_auth)])
