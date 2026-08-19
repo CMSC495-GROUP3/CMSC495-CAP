@@ -64,6 +64,24 @@ REFUSAL_MESSAGE = (
     "this is something the handbook should cover, it's worth flagging to them."
 )
 
+# ── Concurrency ───────────────────────────────────────────────────────────────
+# Size of the thread pool FastAPI uses to run sync routes and to iterate the SSE
+# generator. Starlette calls next() on that generator through the pool, so a
+# streaming request consumes roughly (generation duration) of thread-time. The
+# pool size is therefore the throughput ceiling for chat.
+#
+# Measured on the stubbed load test (scripts/loadtest/, ~2.5s generations):
+#
+#     tokens   throughput
+#         40      15 req/s   <- anyio default
+#        160      54 req/s
+#        320      99 req/s
+#
+# Roughly 0.31 req/s per thread, at about 105 KB of RSS per thread. Raise this
+# if chat throughput is the constraint; see scripts/loadtest/RESULTS.md before
+# changing it, and re-measure rather than guessing.
+THREADPOOL_TOKENS = int(os.getenv("THREADPOOL_TOKENS", "100"))
+
 # ── Conversation limits ───────────────────────────────────────────────────────
 # Turns of history replayed to the model, and turns used to rewrite a follow-up
 # into a standalone retrieval query.

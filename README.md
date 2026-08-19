@@ -154,6 +154,39 @@ magnitude larger still fits. The real costs are per-query embedding and
 generation calls, which is the other reason the grounding gate runs before
 generation. `scripts/ec2-scheduler-setup.sh` stops the instance overnight.
 
+## Throughput
+
+The requirement is "serve 10,000 concurrent users." Read as 10,000 employees
+each asking a question every ~2 minutes, that is **83 queries/sec**.
+
+Measured with the stubbed harness in `scripts/loadtest/` (full method, caveats,
+and reproduction steps in [RESULTS.md](scripts/loadtest/RESULTS.md)):
+
+| Configuration | Throughput |
+|---|---|
+| anyio default (40 threads) | 14.9 req/s |
+| `THREADPOOL_TOKENS=100` (current default) | 33.5 req/s |
+| `THREADPOOL_TOKENS=320` | 98.7 req/s |
+| refusal path (no generation) | ~700 req/s |
+
+The bottleneck is the thread pool. Starlette iterates a sync SSE generator via
+`iterate_in_threadpool`, acquiring a thread per yield, so each stream consumes
+roughly its generation duration in thread-time. Throughput scales near-linearly
+at ~0.31 req/s per thread, at ~105 KB of RSS per thread.
+
+So a **single worker clears the target** with a configuration change rather than
+an architecture change. This is why the async rewrite that was originally
+planned has been deferred: it is not required to meet the requirement, and it
+would introduce cancellation semantics that are easy to get subtly wrong in a
+codebase meant to be maintained by junior developers. That decision is recorded
+with its evidence in RESULTS.md and should be revisited if per-request
+thread-time grows.
+
+The honest caveat: the harness stubs the model and the database, and real
+generation latency is slower and far more variable than the 2.5s used here.
+Cost and provider rate limits bind well before the server does — at 83 req/s and
+~$0.01/query, roughly $3,000/hour.
+
 ## Computational problem-solving
 
 - **Decomposition** — ingestion, indexing, retrieval, and generation are

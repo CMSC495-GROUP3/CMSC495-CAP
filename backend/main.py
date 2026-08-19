@@ -21,8 +21,10 @@ if _missing:
 
 from contextlib import asynccontextmanager  # noqa: E402
 
+import anyio.to_thread  # noqa: E402
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from config import APP_NAME, SIMILARITY_THRESHOLD  # noqa: E402
+from config import APP_NAME, SIMILARITY_THRESHOLD, THREADPOOL_TOKENS  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -50,6 +52,15 @@ async def lifespan(_app: FastAPI):
     This runs once per uvicorn worker. Concurrent create_index calls with
     identical options are no-ops, so multiple workers racing is safe.
     """
+    # Resize the thread pool before serving. This must happen inside the event
+    # loop — current_default_thread_limiter() raises outside one — which is why
+    # it lives here rather than at import.
+    #
+    # Starlette iterates the SSE generator through this pool, so its size caps
+    # chat throughput. See THREADPOOL_TOKENS in src/config.py for the measured
+    # throughput-per-thread curve.
+    anyio.to_thread.current_default_thread_limiter().total_tokens = THREADPOOL_TOKENS
+
     ensure_indexes()
     yield
 
