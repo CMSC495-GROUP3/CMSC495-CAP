@@ -47,6 +47,7 @@ flowchart LR
     GATE -->|"yes"| LLM["Model provider"]
     LLM -->|"SSE: answer, sources, match %"| REACT
     REFUSE --> REACT
+    REACT -->|"Ask People Operations"| ESC["Escalation record<br/>+ optional webhook"]
 ```
 
 Docker Compose builds two services. `frontend` compiles the React app and serves
@@ -74,6 +75,8 @@ and are not part of the Compose environment.
    follow-ups arrive in a separate event so they never delay the answer.
 7. The exchange, its sources, and its score are persisted, so reopening a past
    conversation restores its citations rather than just its text.
+8. If the assistant refused, or the answer did not help, the employee can hand
+   the question to a person from the same screen. See below.
 
 ## The AI-risk mitigations, in code
 
@@ -121,6 +124,33 @@ unrelated and 1.0 means identical. The default threshold is **0.62**.
 The UI renders a refusal distinctly from an answer and points the reader at the
 Policy Library, so "the assistant won't answer that" is visibly different from
 "that policy isn't loaded yet."
+
+### Refusals lead somewhere — escalation
+
+A refusal that ends with "check with People Operations" is only honest if
+checking is easy. The refusal card carries an **Ask People Operations** button,
+and every answer has a quieter "not what you needed?" link. Both file an
+escalation: the question, the assistant's reply, the retrieval score, the cited
+documents, and an optional note from the employee.
+
+The request names the message by its position in the stored conversation, and
+`backend/routes/escalations.py` copies the question from the server-side record
+rather than accepting text from the client. That is the same rule as the
+history handling above, for the same reason: a client that could supply its own
+text could escalate an exchange that never happened. Escalating the same message
+twice returns the first record rather than filing a second.
+
+Records land in the `escalations` collection with a status of `open`. If
+`ESCALATION_WEBHOOK_URL` is set, each one is also posted there as a background
+task after the response is sent. The payload has a top-level `text` field, so a
+Slack or Teams incoming webhook renders it without an adapter. Delivery is best
+effort and logged on failure; the record is already stored, and a webhook outage
+must not turn a successful hand-off into an error.
+
+Whoever handles them lists the queue with `GET /api/escalations?status=open` and
+closes one with `PATCH /api/escalations/{id}` and a resolution note. There is no
+dedicated UI for that side yet; the endpoints are enough for a script or a
+webhook-fed channel.
 
 ### Vendor lock-in — one interface, one env var
 
@@ -256,7 +286,7 @@ Create a virtual environment and generate the shared password hash:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt -r backend/requirements.txt
+pip install -r requirements.txt -r backend/requirements.txt -r requirements-dev.txt
 python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('replace-this-password'))"
 ```
 
@@ -306,6 +336,31 @@ interactive API docs at `http://localhost:8000/docs`.
 For frontend development with hot reload, run `npm run dev` in `frontend/` and
 start the API separately with `uvicorn main:app --reload` from `backend/`.
 
+## Tests
+
+```bash
+python -m pytest                                   # ~1 second
+python -m pytest --cov=backend --cov=src           # coverage, 84% at last count
+```
+
+The suite runs the real application with its external services replaced, the
+same way the load-test server does: MongoDB is an in-memory fake from
+`scripts/loadtest/fakemongo.py`, the model is `LLM_PROVIDER=fake` with every
+delay set to zero, and vector search returns whatever a test hands it. Nothing
+in `src/` or `backend/` has a test-only branch. No database, API key, or `.env`
+is needed, which is also why CI (`.github/workflows/ci.yml`) needs no secrets.
+
+What is covered: the grounding gate and its best-not-mean rule, server-side
+history filtering, the SSE protocol, first-turn caching and its invalidation,
+query logging, escalations end to end, and the bookkeeping that must survive a
+client hanging up mid-stream. That last case found a real bug while the suite
+was being written: a two-word fragment from an abandoned stream was being cached
+as the answer for everyone who asked the same question next.
+
+Not covered: the OpenAI provider and the ingestion scripts, which are thin
+wrappers over network calls, and the React components, which are checked by
+`tsc` and ESLint only.
+
 ## Document format
 
 Plain UTF-8 text with a short header block, a blank line, then the body:
@@ -327,9 +382,12 @@ falls back to a readable form of the filename.
 
 ```text
 backend/    FastAPI routes, auth, rate limiting, MongoDB access
-  db.py             shared client + index creation
+  db.py             collection handles + index creation
+  analytics.py      one query_logs record per request
+  notify.py         best-effort webhook delivery for escalations
   routes/chat.py    streaming + non-streaming Q&A, enforces the grounding gate
   routes/documents.py  browse and search the indexed corpus
+  routes/escalations.py  hand a question to a person; open queue; resolve
 src/        The RAG pipeline, importable by the backend
   config.py         tuning knobs, single source of truth
   llm.py            LLMProvider interface — the only vendor-aware module
@@ -338,7 +396,8 @@ src/        The RAG pipeline, importable by the backend
   embed_documents.py / seed_documents.py   offline ingestion
 frontend/   React, TypeScript, Tailwind, Vite, served by Nginx
 data/       Sample policy corpus
-scripts/    EC2 deploy and instance-scheduling helpers
+scripts/    EC2 deploy helpers, instance scheduling, and the load-test harness
+tests/      pytest suite; conftest.py stubs every external service
 ```
 
 ## Provenance
@@ -358,8 +417,10 @@ Written specifically for this project: the grounding gate and refusal path, the
   Conversations are not scoped to a user. Appropriate for a pilot; it is the
   first thing to change before real deployment.
 - **The similarity threshold is untuned** against a real corpus. See above.
-- **No automated test suite or CI yet.** Verification so far has been manual
-  plus the checks described in the pull request.
+- **Escalations have no handler UI.** The open queue and resolve endpoints
+  exist; a page for People Operations to work through them does not.
+- **The React components have no unit tests.** The backend suite is the safety
+  net; the frontend is checked by `tsc` and ESLint.
 - **Document search uses `$regex`**, which does not use an index. Fine at this
   corpus size; move to Atlas Search if the library grows large.
 - **JWTs are stored in browser local storage**, which is acceptable for an
