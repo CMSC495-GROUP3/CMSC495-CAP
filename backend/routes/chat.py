@@ -255,6 +255,13 @@ def _finalize(body: ChatRequest, state: dict, corpus_version: str,
 
     A finally block runs during GeneratorExit, so the work happens either way.
     Nothing here may yield — that would raise RuntimeError during close.
+
+    The other disconnect is mid-generation. Then `state["answer"]` is a
+    fragment: it is still persisted and logged, because the user saw it, but it
+    is never cached. `state["complete"]` is only set once the answer has been
+    produced in full, and the cache write is gated on it — otherwise a
+    two-word fragment would be served as the answer to everyone who asks the
+    same question until the TTL expires.
     """
     if state["finalized"]:
         return
@@ -267,7 +274,7 @@ def _finalize(body: ChatRequest, state: dict, corpus_version: str,
     _persist(body.session_id, body.question, state["answer"], state["sources"],
              state["confidence"], state["refused"])
 
-    if state["cache_hit"] is None and is_cacheable_turn(history):
+    if state["complete"] and state["cache_hit"] is None and is_cacheable_turn(history):
         put_cached_answer(body.question, corpus_version, {
             "answer": state["answer"],
             "sources": state["sources"],
@@ -306,7 +313,7 @@ def _stream(body: ChatRequest):
     state = {
         "answer": "", "sources": [], "confidence": None, "refused": False,
         "follow_ups": [], "passages": [], "cache_hit": None,
-        "condensed": body.question, "finalized": False,
+        "condensed": body.question, "finalized": False, "complete": False,
     }
 
     try:
@@ -343,7 +350,7 @@ def _stream(body: ChatRequest):
                 max((p.get("score", 0.0) for p in passages), default=0.0),
                 body.session_id,
             )
-            state.update(answer=REFUSAL_MESSAGE, refused=True)
+            state.update(answer=REFUSAL_MESSAGE, refused=True, complete=True)
             yield _sse({"chunk": REFUSAL_MESSAGE})
             yield _sse({"done": True, "sources": [],
                         "confidence": state["confidence"], "refused": True})
@@ -363,6 +370,8 @@ def _stream(body: ChatRequest):
             state["answer"] = ""
             yield _sse({"error": "An error occurred while generating the response."})
             return
+
+        state["complete"] = True
 
         # Sources and confidence are already known — send them the moment the
         # answer finishes rather than waiting on the follow-up call.
