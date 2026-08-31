@@ -9,6 +9,8 @@ export interface ChatMessage {
   follow_ups?: string[]
   /** True when the assistant declined because retrieval was too weak to ground an answer. */
   refused?: boolean
+  /** Set once this turn has been handed to a person. See EscalateButton. */
+  escalation_id?: string
 }
 
 interface UseChatOptions {
@@ -43,6 +45,7 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
         sources?: string[]
         confidence?: number | null
         refused?: boolean
+        escalation_id?: string
       }[] = res.data.messages ?? []
       const mapped: ChatMessage[] = raw.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -50,6 +53,7 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
         sources: m.sources,
         confidence: m.confidence,
         refused: m.refused,
+        escalation_id: m.escalation_id,
       }))
       setMessages(mapped)
 
@@ -193,5 +197,12 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
     }
   }
 
-  return { messages, loading, streaming, sendMessage }
+  /** Record that a message was escalated, so the button shows its reference. */
+  function markEscalated(index: number, escalationId: string) {
+    setMessages((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, escalation_id: escalationId } : m))
+    )
+  }
+
+  return { messages, loading, streaming, sendMessage, markEscalated }
 }

@@ -53,9 +53,23 @@ def _project(doc: dict, projection: dict | None) -> dict:
     return out
 
 
+def _set_path(doc: dict, path: str, value: Any) -> None:
+    """Assign through a dotted path, so "messages.3.flag" reaches into the
+    list the way Mongo's positional update does."""
+    parts = path.split(".")
+    target: Any = doc
+    for part in parts[:-1]:
+        target = target[int(part)] if isinstance(target, list) else target.setdefault(part, {})
+    last = parts[-1]
+    if isinstance(target, list):
+        target[int(last)] = value
+    else:
+        target[last] = value
+
+
 def _apply_update(doc: dict, update: dict, inserted: bool) -> None:
     for field, value in update.get("$set", {}).items():
-        doc[field] = value
+        _set_path(doc, field, value)
     for field, value in update.get("$inc", {}).items():
         doc[field] = doc.get(field, 0) + value
     for field, spec in update.get("$push", {}).items():

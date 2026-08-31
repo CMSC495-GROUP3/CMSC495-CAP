@@ -24,7 +24,7 @@ export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const sessionId = searchParams.get('session_id')
 
-  const { messages, loading, streaming, sendMessage } = useChat({
+  const { messages, loading, streaming, sendMessage, markEscalated } = useChat({
     sessionId,
     onSessionCreated: (id) => {
       // Update the URL with the new session_id without re-mounting the component
@@ -66,7 +66,13 @@ export default function ChatPage() {
 
       {/* Message list */}
       {hasMessages && (
-        <MessageList messages={messages} loading={loading} onFollowUp={sendMessage} />
+        <MessageList
+          messages={messages}
+          sessionId={sessionId}
+          loading={loading}
+          onFollowUp={sendMessage}
+          onEscalated={markEscalated}
+        />
       )}
 
       {/* Input */}

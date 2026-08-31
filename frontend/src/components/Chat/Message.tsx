@@ -3,15 +3,20 @@ import { AlertCircle } from 'lucide-react'
 import ConfidenceBadge from './ConfidenceBadge'
 import SourcesList from './SourcesList'
 import FollowUpButtons from './FollowUpButtons'
+import EscalateButton from './EscalateButton'
 import type { ChatMessage } from '../../hooks/useChat'
 
 interface Props {
   message: ChatMessage
+  /** Position in the conversation; the escalation request names the turn by it. */
+  index: number
+  sessionId: string | null
   isLast: boolean
   onFollowUp: (q: string) => void
+  onEscalated: (index: number, escalationId: string) => void
 }
 
-export default function Message({ message, isLast, onFollowUp }: Props) {
+export default function Message({ message, index, sessionId, isLast, onFollowUp, onEscalated }: Props) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -36,8 +41,16 @@ export default function Message({ message, isLast, onFollowUp }: Props) {
               </p>
             </div>
           </div>
-          <div className="px-1">
+          <div className="px-1 flex flex-wrap items-center gap-x-4 gap-y-2">
             <ConfidenceBadge confidence={message.confidence} />
+            <EscalateButton
+              sessionId={sessionId}
+              messageIndex={index}
+              reason="refused"
+              escalationId={message.escalation_id}
+              prominent
+              onEscalated={(id) => onEscalated(index, id)}
+            />
           </div>
         </div>
       </div>
@@ -71,6 +84,13 @@ export default function Message({ message, isLast, onFollowUp }: Props) {
           {isLast && (
             <FollowUpButtons questions={message.follow_ups ?? []} onSelect={onFollowUp} />
           )}
+          <EscalateButton
+            sessionId={sessionId}
+            messageIndex={index}
+            reason="unhelpful"
+            escalationId={message.escalation_id}
+            onEscalated={(id) => onEscalated(index, id)}
+          />
         </div>
       </div>
     </div>

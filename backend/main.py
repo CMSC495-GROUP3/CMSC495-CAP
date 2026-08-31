@@ -37,6 +37,7 @@ from routes.auth import router as auth_router  # noqa: E402
 from routes.chat import router as chat_router  # noqa: E402
 from routes.conversations import router as conversations_router  # noqa: E402
 from routes.documents import router as documents_router  # noqa: E402
+from routes.escalations import router as escalations_router  # noqa: E402
 from routes.projects import router as projects_router  # noqa: E402
 
 
@@ -91,6 +92,7 @@ app.include_router(auth_router, prefix="/api/auth")
 app.include_router(chat_router, prefix="/api")
 app.include_router(conversations_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
+app.include_router(escalations_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 
 

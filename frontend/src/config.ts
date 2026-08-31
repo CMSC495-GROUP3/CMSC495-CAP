@@ -12,3 +12,9 @@ export const APP_TAGLINE = 'Ask about company policy and get an answer with its 
 
 /** localStorage key holding the JWT. */
 export const TOKEN_KEY = 'policy_assistant_token'
+
+/**
+ * Who a refused or unhelpful answer is handed to. Mirrors ESCALATION_CONTACT
+ * in src/config.py; change both together.
+ */
+export const ESCALATION_CONTACT = 'People Operations'

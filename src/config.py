@@ -117,3 +117,21 @@ QUERY_LOG_TTL_SECONDS = int(os.getenv("QUERY_LOG_TTL_SECONDS", str(90 * 86400)))
 # into a standalone retrieval query.
 HISTORY_TURNS = int(os.getenv("HISTORY_TURNS", "20"))
 CONDENSE_TURNS = int(os.getenv("CONDENSE_TURNS", "6"))
+
+# ── Escalation ────────────────────────────────────────────────────────────────
+# When the assistant refuses, or an answer does not help, the employee can hand
+# the question to a person. The record lands in the `escalations` collection
+# and, if a webhook is configured, is posted there too so it reaches an inbox
+# or a chat channel without anyone polling the database.
+#
+# Who the request goes to. Shown on the button in the UI and in the webhook text.
+ESCALATION_CONTACT = os.getenv("ESCALATION_CONTACT", "People Operations")
+
+# Optional. Any URL that accepts a JSON POST. The payload carries a top-level
+# `text` field, so a Slack or Teams incoming webhook renders it without an
+# adapter. Empty disables delivery; the record is still stored.
+ESCALATION_WEBHOOK_URL = os.getenv("ESCALATION_WEBHOOK_URL", "")
+ESCALATION_WEBHOOK_TIMEOUT_SECONDS = float(os.getenv("ESCALATION_WEBHOOK_TIMEOUT_SECONDS", "5"))
+
+# Longest note an employee may attach. It is free text, so it is bounded.
+ESCALATION_NOTE_MAX_LENGTH = int(os.getenv("ESCALATION_NOTE_MAX_LENGTH", "2000"))

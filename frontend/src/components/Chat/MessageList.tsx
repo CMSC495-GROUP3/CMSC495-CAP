@@ -9,11 +9,13 @@ import type { ChatMessage } from '../../hooks/useChat'
 
 interface Props {
   messages: ChatMessage[]
+  sessionId: string | null
   loading: boolean
   onFollowUp: (q: string) => void
+  onEscalated: (index: number, escalationId: string) => void
 }
 
-export default function MessageList({ messages, loading, onFollowUp }: Props) {
+export default function MessageList({ messages, sessionId, loading, onFollowUp, onEscalated }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -26,8 +28,11 @@ export default function MessageList({ messages, loading, onFollowUp }: Props) {
         <Message
           key={i}
           message={msg}
+          index={i}
+          sessionId={sessionId}
           isLast={i === messages.length - 1 && msg.role === 'assistant'}
           onFollowUp={onFollowUp}
+          onEscalated={onEscalated}
         />
       ))}
 

@@ -40,6 +40,9 @@ documents_col = get_collection("documents")
 # One record per chat request. The substrate for content-gap and FAQ analytics.
 query_logs_col = get_collection("query_logs")
 
+# One record per hand-off to a person. See backend/routes/escalations.py.
+escalations_col = get_collection("escalations")
+
 # Caches. Keyed by content hash on _id, so no separate unique index is needed.
 answer_cache_col = get_collection("answer_cache")
 embedding_cache_col = get_collection("embedding_cache")
@@ -86,6 +89,17 @@ def ensure_indexes() -> None:
     )
     query_logs_col.create_index([("refused", ASCENDING), ("created_at", DESCENDING)])
     query_logs_col.create_index([("question_hash", ASCENDING), ("created_at", DESCENDING)])
+
+    # escalations — point lookup by id, the open queue newest first, and the
+    # per-conversation lookup the chat UI uses when reopening a conversation
+    escalations_col.create_index("escalation_id", unique=True)
+    escalations_col.create_index([("status", ASCENDING), ("created_at", DESCENDING)])
+    # One escalation per message. The route checks before inserting, but two
+    # concurrent requests can both pass that check; this index is what makes
+    # the second one fail instead of filing a duplicate.
+    escalations_col.create_index(
+        [("session_id", ASCENDING), ("message_index", ASCENDING)], unique=True
+    )
 
     # Caches — expiry only. Lookups are by _id, which is indexed implicitly.
     #
