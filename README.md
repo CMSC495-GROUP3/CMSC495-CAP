@@ -7,6 +7,10 @@
 An internal assistant that answers employee questions about company policy and
 cites the document each answer came from.
 
+**Working on it?** [CONTRIBUTING.md](CONTRIBUTING.md) gets you from clone to a
+running app in ten minutes with no accounts, and covers checks, conventions, and
+the things that bite.
+
 ## The problem
 
 Employees lose hours hunting through scattered policy and onboarding documents,
@@ -260,6 +264,11 @@ rather than turning a working answer into an error.
   search narrows 100 candidates to the best 5.
 
 ## Local setup
+
+For development without any cloud accounts, `make setup`, `make stub`, and
+`make web` run the app with a fake model and an in-memory database; see
+[CONTRIBUTING.md](CONTRIBUTING.md). The steps below are for running against the
+real services.
 
 ### Prerequisites
 

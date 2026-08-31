@@ -1,0 +1,195 @@
+# Working on this project
+
+The [README](README.md) explains what the system is and why it is built the way
+it is. This page is the practical side: getting it running, checking a change,
+and getting that change merged. If something here is wrong or missing, fix it in
+the same PR as the change that made it wrong.
+
+## Ten minutes to a running app
+
+No cloud accounts, API keys, or `.env` needed. This runs the real application
+with a fake model and an in-memory database.
+
+Prerequisites: Python 3.11+, Node 20+, and `make`. Docker is only needed for the
+full stack.
+
+```bash
+git clone https://github.com/DanielTsang26/CMSC495-CAP.git
+cd CMSC495-CAP
+make setup          # .venv, Python deps, npm install
+make stub           # terminal 1: API on :8000, fake model, in-memory Mongo
+make web            # terminal 2: React on :5173 with hot reload
+```
+
+Open http://localhost:5173 and log in with the password `dev`.
+
+What is fake in this mode, so you are not surprised:
+
+- **The model.** Every answer is the same canned PTO text, and follow-up
+  suggestions are canned too. Retrieval scores are fixed, so every question
+  either answers or every question refuses. `make stub REFUSE=1` flips it to
+  refusing, which is how you see the refusal card and the escalation button.
+- **The database.** Conversations, escalations, and caches live in memory and
+  vanish when the API stops.
+- **Vector search.** Replaced with canned passages. Atlas Vector Search cannot
+  run locally at all.
+
+The stub lives in `scripts/loadtest/server.py`. It patches the real app from the
+outside; there is no test-only branch in application code, and there should not
+be one.
+
+## Running against the real services
+
+Needed for anything touching retrieval quality, ingestion, or the provider.
+
+1. `cp .env.example .env` and fill it in. The comments in that file say what
+   each value is for. You need an OpenAI key, a MongoDB Atlas cluster with
+   Vector Search, and an S3 bucket.
+2. Generate the two secrets:
+   ```bash
+   openssl rand -hex 32                                   # JWT_SECRET_KEY
+   .venv/bin/python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('your-password'))"   # APP_PASSWORD_HASH
+   ```
+   A bcrypt hash contains `$`. Paste it into `.env` with an editor, not `echo`.
+3. Load the corpus, then create the vector index in the Atlas UI (the README's
+   "Load the corpus" section has the exact JSON). The driver cannot create a
+   search index; this step is manual and it is the one people forget.
+   ```bash
+   .venv/bin/python src/seed_documents.py     # documents -> S3
+   .venv/bin/python src/embed_documents.py    # chunk, embed, store
+   ```
+4. Run it either way:
+
+   | | Command | Use when |
+   |---|---|---|
+   | Dev mode | `cd backend && ../.venv/bin/uvicorn main:app --reload` plus `make web` | changing code |
+   | Full stack | `make compose` | checking the Nginx proxy, the Docker build, or what a deploy will run |
+
+   In dev mode the API is at http://localhost:8000 and the OpenAPI console at
+   http://localhost:8000/docs, which is the fastest way to poke an endpoint by
+   hand. In Compose the app is at http://localhost:3000.
+
+## Checking a change
+
+```bash
+make test     # backend tests, about a second
+make cov      # same, with a per-file coverage report
+make lint     # ESLint and tsc on the frontend
+make build    # production frontend build
+make check    # all of the above; this is what CI runs
+```
+
+CI (`.github/workflows/ci.yml`) runs on every pull request and fails if backend
+coverage drops under 80%. It needs no secrets, so it runs on forks too.
+
+### Writing tests
+
+The suite is in `tests/`. `conftest.py` stubs every external service before the
+app is imported, the same way the stub server does. Useful fixtures:
+
+| Fixture | Gives you |
+|---|---|
+| `client` | a `TestClient` for the whole app |
+| `auth` | a header dict with a valid bearer token |
+| `retrieval` | control over what vector search returns (`retrieval.passages = make_passages(0.9, 0.7)`) and a count of calls |
+| `conversation` | a fresh conversation's `session_id` |
+
+Test the behaviour, not the implementation: assert on the HTTP response, the
+SSE events, or what ended up in the fake database. Look at
+`tests/test_escalations.py` for the shape of a route test and
+`tests/test_chat.py::TestDroppedStream` for driving the streaming generator by
+hand.
+
+The fake Mongo (`scripts/loadtest/fakemongo.py`) implements only the operations
+the app uses. If you use a new query operator or update form, add it there, and
+keep it obviously partial rather than pretending to be complete.
+
+## Where things live
+
+| I want to change... | Look in |
+|---|---|
+| a tuning knob (threshold, chunk size, TTLs, thread pool) | `src/config.py`; every value is env-overridable, defaults live here |
+| the answer prompt | `rag_chain.py` `ANSWER_SYSTEM_PROMPT`, then bump `PROMPT_VERSION` in `config.py` or cached answers keep serving the old prompt |
+| retrieval or the grounding gate | `src/rag_chain.py` |
+| which model or vendor is used | `src/llm.py` only. Add a subclass, register it in `_PROVIDERS`, set `LLM_PROVIDER` |
+| how a source format is parsed | `src/documents.py` |
+| an API endpoint | `backend/routes/`; one file per area, mounted in `backend/main.py` |
+| a MongoDB collection or index | `backend/db.py` |
+| the chat UI | `frontend/src/components/Chat/`, state in `frontend/src/hooks/useChat.ts` |
+| the product name or the escalation contact | both `src/config.py` and `frontend/src/config.ts`; they are mirrored, change both |
+| the sample corpus | `data/sample-policies/`, then re-run ingestion |
+
+The backend reaches `src/` by inserting it on `sys.path` at import. That means
+backend modules must be run from `backend/` (or through the stub, tests, or
+Docker, which all handle it). `python backend/main.py` from the repo root will
+not find `config`.
+
+## Getting a change merged
+
+1. Branch from `main`: `feat/short-name`, `fix/short-name`, `docs/...`. If you
+   do not have write access to the repo, work on a fork; `gh repo fork` sets
+   one up and PRs open against `DanielTsang26/CMSC495-CAP` the same way.
+2. Commit in pieces that each make sense alone. Messages follow
+   `type: what changed` with the types `feat`, `fix`, `refactor`, `docs`,
+   `test`, `chore`, `perf`, `ci`. The body is for *why*, and for anything a
+   reader would otherwise have to rediscover: what you measured, what you tried
+   that did not work, what a future change must not break. Read
+   `git log` for the house style.
+3. `make check` before pushing.
+4. Open the PR; the template asks for what a reviewer needs. One approval and
+   green CI to merge. Prefer squash only when the commits are noise; otherwise
+   keep them.
+5. If the change alters setup, configuration, or behaviour someone would need
+   to know about, the README or this page changes in the same PR.
+
+Never commit `.env`, a key, a hash, or a real policy document. `.gitignore`
+covers `.env`; the rest is on you.
+
+## Things that will bite you
+
+- **Changing a TTL** (`*_TTL_SECONDS` in `config.py`) fails at startup with
+  `IndexOptionsConflict` on an existing database. MongoDB will not alter a TTL
+  through `create_index`; drop the index by hand or run `collMod` first.
+- **Changing the embedding model** changes the vector dimensions, which are
+  baked into the Atlas index. Re-run ingestion and recreate the index.
+- **`bcrypt` is pinned to 4.0.1** because `passlib` breaks on 5.x. Do not bump
+  it without replacing `passlib`.
+- **Do not deploy under gunicorn `--preload`.** `MongoClient` is not fork-safe
+  and the collection handles bind at import. `uvicorn --workers N` is fine. The
+  reasoning is in `src/mongo.py`.
+- **`LLM_PROVIDER=fake` refuses to start with `APP_ENV=production`**, on
+  purpose. If a deploy fails with that error, the environment is misconfigured,
+  not the code.
+- **Connections per process** are `MONGO_MAX_POOL_SIZE` and the cluster limit is
+  workers times that. Atlas free tier caps in the low hundreds and fails under
+  load rather than at startup. Redo the arithmetic in `src/mongo.py` before
+  raising either number.
+- **Cached answers outlive a prompt fix** unless `PROMPT_VERSION` is bumped. It
+  is part of the cache key for exactly this reason.
+- **`THREADPOOL_TOKENS` is the chat throughput ceiling.** It was measured, not
+  guessed; see `scripts/loadtest/RESULTS.md` before changing it, and re-measure
+  after.
+- **The fake provider's embeddings are meaningless.** Never use `make stub` to
+  judge retrieval quality or to tune `SIMILARITY_THRESHOLD`.
+
+## Debugging
+
+- The OpenAPI console at `/docs` lets you call any endpoint with a token. Log in
+  at `POST /api/auth/login`, click Authorize, paste the token.
+- SSE by hand:
+  `curl -N -X POST localhost:8000/api/chat/stream -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"question":"How much PTO do I get?"}'`
+- Escalations queue: `GET /api/escalations?status=open`. There is no UI for it
+  yet.
+- Query analytics are in the `query_logs` collection: refused questions grouped
+  by `question_hash` are the content gaps, and `best_score` on answered versus
+  refused rows is what the threshold should be tuned against.
+- Backend logs go to stdout. In Compose: `docker compose logs -f backend`.
+
+## Load testing and deployment
+
+- `make stub` in one terminal, `make loadtest` in another. Method, numbers, and
+  caveats in `scripts/loadtest/RESULTS.md`.
+- `scripts/deploy.sh` pulls and rebuilds the Compose stack on an EC2 host;
+  `scripts/ec2-scheduler-setup.sh` stops the instance overnight. Both have their
+  usage at the top of the file, and both touch real infrastructure, so read them
+  before running them.
