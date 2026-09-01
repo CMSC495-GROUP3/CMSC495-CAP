@@ -74,13 +74,49 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
 ```bash
 make test     # backend tests, about a second
 make cov      # same, with a per-file coverage report
-make lint     # ESLint and tsc on the frontend
+make lint     # ruff on Python; ESLint and tsc on the frontend
+make fmt      # fix what ruff can fix, then format; run before committing
 make build    # production frontend build
-make check    # all of the above; this is what CI runs
+make check    # test, lint, build; this is what the CI workflow runs
+make audit    # known vulnerabilities in both dependency trees (the Security workflow)
 ```
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and fails if backend
-coverage drops under 80%. It needs no secrets, so it runs on forks too.
+Python formatting is enforced. `make fmt` before you commit and CI will not
+complain. The rules are in `ruff.toml`; the version of ruff is pinned in
+`requirements-dev.txt` because the formatter's output changes between releases.
+
+### What CI runs
+
+Every PR and every push to `main` triggers three workflows. None needs a secret,
+so they run on fork PRs too.
+
+| Workflow | Job | What fails it |
+|---|---|---|
+| CI | Python lint and format | a `ruff check` finding or an unformatted file |
+| CI | Backend tests (3.11, 3.12, 3.13) | a failing test, or coverage under 80% on any version |
+| CI | Evaluation dataset | `evaluation/questions.json` that `load_cases` rejects |
+| CI | Frontend lint, types, build | ESLint, `tsc -b`, or `vite build` |
+| CI | Docker images and Compose | either image failing to build, the backend image failing to import `main`, or an invalid `docker-compose.yml` |
+| CI | Shell, Dockerfile, workflow lint | shellcheck on `scripts/*.sh`, hadolint on both Dockerfiles, actionlint on the workflows, or a `.env`, key, or build output that got committed |
+| Security | CodeQL, dependency advisories, dependency review, leaked secrets | a new finding; the accepted-advisory list is in `scripts/audit.sh` |
+| PR checks | title, description, labels | a title not in `type: what changed` form, or an empty "What and why" |
+
+The Security workflow also runs every Monday, so a new advisory in an existing
+dependency shows up as a failed scheduled run rather than in someone's
+unrelated PR.
+
+Branch protection on `main` should require the single check named **CI
+status**, which fails if any CI job fails. Requiring that one name means a job
+added or renamed in `ci.yml` cannot quietly stop being required.
+
+A fourth workflow, **Live evaluation**, runs the labeled question set against
+the real provider and index. It costs money, so it only runs when a maintainer
+starts it from the Actions tab, and it needs a repository environment named
+`evaluation` holding `OPENAI_API_KEY`, `MONGODB_URI`, and `MONGODB_DB`. See
+`evaluation/README.md` for what the numbers mean.
+
+Dependabot opens one grouped PR per ecosystem on Mondays (pip, npm, GitHub
+Actions, Docker base images). Review them like any other PR; CI runs on them.
 
 ### Writing tests
 
@@ -135,10 +171,11 @@ not find `config`.
    reader would otherwise have to rediscover: what you measured, what you tried
    that did not work, what a future change must not break. Read
    `git log` for the house style.
-3. `make check` before pushing.
-4. Open the PR; the template asks for what a reviewer needs. One approval and
-   green CI to merge. Prefer squash only when the commits are noise; otherwise
-   keep them.
+3. `make check` before pushing. `make fmt` first if ruff complains.
+4. Open the PR. Its title follows the same `type: what changed` rule as
+   commits, because it becomes the merge commit subject; a check enforces it.
+   The template asks for what a reviewer needs. One approval and green CI to
+   merge. Prefer squash only when the commits are noise; otherwise keep them.
 5. If the change alters setup, configuration, or behaviour someone would need
    to know about, the README or this page changes in the same PR.
 
