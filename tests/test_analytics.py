@@ -1,4 +1,5 @@
 """Query logging: one record per request, never raising."""
+
 import analytics
 from analytics import MAX_QUESTION_LENGTH, log_query
 from cache import question_hash
@@ -7,10 +8,14 @@ from conftest import FAKE_DB, make_passages
 
 def _log(**overrides):
     fields = dict(
-        session_id="s1", question="How much PTO do I get?",
+        session_id="s1",
+        question="How much PTO do I get?",
         condensed_question="How much PTO do I get?",
-        passages=make_passages(0.80, 0.60), refused=False,
-        sources=["PTO Policy"], cache_hit=None, latency_ms=120,
+        passages=make_passages(0.80, 0.60),
+        refused=False,
+        sources=["PTO Policy"],
+        cache_hit=None,
+        latency_ms=120,
     )
     fields.update(overrides)
     log_query(**fields)

@@ -1,4 +1,5 @@
 """Handing a question to a person."""
+
 from datetime import datetime
 
 import pytest
@@ -21,13 +22,19 @@ def delivered(monkeypatch) -> list[dict]:
 def refused(client, auth, retrieval, conversation) -> str:
     """A conversation whose one exchange was refused. Returns the session id."""
     retrieval.passages = make_passages(0.30)
-    client.post("/api/chat", json={"question": "Can I bring my dog?", "session_id": conversation}, headers=auth)
+    client.post(
+        "/api/chat",
+        json={"question": "Can I bring my dog?", "session_id": conversation},
+        headers=auth,
+    )
     return conversation
 
 
 @pytest.fixture
 def answered(client, auth, retrieval, conversation) -> str:
-    client.post("/api/chat", json={"question": "How much PTO?", "session_id": conversation}, headers=auth)
+    client.post(
+        "/api/chat", json={"question": "How much PTO?", "session_id": conversation}, headers=auth
+    )
     return conversation
 
 
@@ -43,7 +50,9 @@ class TestCreate:
     def test_requires_auth(self, client):
         assert client.post("/api/escalations", json={}).status_code in (401, 403)
 
-    def test_records_the_refused_exchange_from_the_server_side_copy(self, client, auth, refused, delivered):
+    def test_records_the_refused_exchange_from_the_server_side_copy(
+        self, client, auth, refused, delivered
+    ):
         response = _create(client, auth, refused, note="  It's for an assistance animal.  ")
         assert response.status_code == 200
         record = response.json()
@@ -66,7 +75,9 @@ class TestCreate:
 
         assert [d["escalation_id"] for d in delivered] == [record["escalation_id"]]
 
-    def test_unhelpful_answer_carries_an_excerpt_and_sources(self, client, auth, answered, delivered):
+    def test_unhelpful_answer_carries_an_excerpt_and_sources(
+        self, client, auth, answered, delivered
+    ):
         record = _create(client, auth, answered, reason="unhelpful").json()
         assert record["refused"] is False
         assert record["answer_excerpt"].startswith("Based on the policy documents")
@@ -80,7 +91,9 @@ class TestCreate:
         assert FAKE_DB["escalations"].count_documents({}) == 1
         assert len(delivered) == 1
 
-    def test_losing_a_race_returns_the_winner_without_a_second_webhook(self, client, auth, refused, delivered, monkeypatch):
+    def test_losing_a_race_returns_the_winner_without_a_second_webhook(
+        self, client, auth, refused, delivered, monkeypatch
+    ):
         """Two requests pass the pre-check together and the unique index
         rejects the second insert. The fake enforces no indexes, so the
         collection below behaves as one where the winner landed in between."""
@@ -144,7 +157,9 @@ class TestQueue:
     def test_lists_newest_first_with_filters(self, client, auth, retrieval, delivered):
         sessions = []
         for question in ("q1", "q2", "q3"):
-            sid = client.post("/api/conversations", json={"title": question}, headers=auth).json()["session_id"]
+            sid = client.post("/api/conversations", json={"title": question}, headers=auth).json()[
+                "session_id"
+            ]
             retrieval.passages = make_passages(0.30)
             client.post("/api/chat", json={"question": question, "session_id": sid}, headers=auth)
             sessions.append(sid)
@@ -159,15 +174,25 @@ class TestQueue:
         open_queue = client.get("/api/escalations", params={"status": "open"}, headers=auth).json()
         assert [e["escalation_id"] for e in open_queue["items"]] == [ids[2], ids[0]]
 
-        mine = client.get("/api/escalations", params={"session_id": sessions[1]}, headers=auth).json()
+        mine = client.get(
+            "/api/escalations", params={"session_id": sessions[1]}, headers=auth
+        ).json()
         assert [e["escalation_id"] for e in mine["items"]] == [ids[1]]
 
-        assert len(client.get("/api/escalations", params={"limit": 2}, headers=auth).json()["items"]) == 2
-        assert client.get("/api/escalations", params={"status": "weird"}, headers=auth).status_code == 422
+        assert (
+            len(client.get("/api/escalations", params={"limit": 2}, headers=auth).json()["items"])
+            == 2
+        )
+        assert (
+            client.get("/api/escalations", params={"status": "weird"}, headers=auth).status_code
+            == 422
+        )
 
     def test_get_one(self, client, auth, refused, delivered):
         record = _create(client, auth, refused).json()
-        assert client.get(f"/api/escalations/{record['escalation_id']}", headers=auth).json() == record
+        assert (
+            client.get(f"/api/escalations/{record['escalation_id']}", headers=auth).json() == record
+        )
         assert client.get("/api/escalations/missing", headers=auth).status_code == 404
 
     def test_resolve_and_reopen(self, client, auth, refused, delivered):
@@ -175,16 +200,31 @@ class TestQueue:
 
         resolved = client.patch(
             f"/api/escalations/{escalation_id}",
-            json={"status": "resolved", "resolution": "Assistance animals are allowed; policy added."},
+            json={
+                "status": "resolved",
+                "resolution": "Assistance animals are allowed; policy added.",
+            },
             headers=auth,
         ).json()
         assert resolved["status"] == "resolved"
         assert resolved["resolution"] == "Assistance animals are allowed; policy added."
         assert resolved["resolved_at"] is not None
 
-        reopened = client.patch(f"/api/escalations/{escalation_id}", json={"status": "open"}, headers=auth).json()
+        reopened = client.patch(
+            f"/api/escalations/{escalation_id}", json={"status": "open"}, headers=auth
+        ).json()
         assert reopened["status"] == "open" and reopened["resolved_at"] is None
         assert reopened["resolution"] == resolved["resolution"]  # untouched when absent
 
-        assert client.patch("/api/escalations/missing", json={"status": "open"}, headers=auth).status_code == 404
-        assert client.patch(f"/api/escalations/{escalation_id}", json={"status": "closed"}, headers=auth).status_code == 422
+        assert (
+            client.patch(
+                "/api/escalations/missing", json={"status": "open"}, headers=auth
+            ).status_code
+            == 404
+        )
+        assert (
+            client.patch(
+                f"/api/escalations/{escalation_id}", json={"status": "closed"}, headers=auth
+            ).status_code
+            == 422
+        )

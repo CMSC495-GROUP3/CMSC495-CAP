@@ -9,6 +9,7 @@ doing I/O at import means a database problem surfaces as an confusing traceback
 during module loading rather than as a clear startup failure. `main.py` calls
 `ensure_indexes()` from the application lifespan instead.
 """
+
 import os
 import sys
 
@@ -16,13 +17,13 @@ from pymongo import ASCENDING, DESCENDING
 
 # src/ holds the RAG pipeline, its config, and the shared Mongo client.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from config import (  # noqa: E402
+from config import (
     ANSWER_CACHE_TTL_SECONDS,
     EMBEDDING_CACHE_TTL_SECONDS,
     PASSAGES_COLLECTION,
     QUERY_LOG_TTL_SECONDS,
 )
-from mongo import get_collection  # noqa: E402
+from mongo import get_collection
 
 # Constructing a collection handle performs no I/O — pymongo connects on the
 # first real operation — so binding these at import is safe.

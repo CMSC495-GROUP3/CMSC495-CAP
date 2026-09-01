@@ -1,4 +1,5 @@
 """FastAPI application entrypoint."""
+
 import os
 import sys
 
@@ -24,13 +25,12 @@ from contextlib import asynccontextmanager  # noqa: E402
 import anyio.to_thread  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from config import APP_NAME, SIMILARITY_THRESHOLD, THREADPOOL_TOKENS  # noqa: E402
-
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
+from config import APP_NAME, SIMILARITY_THRESHOLD, THREADPOOL_TOKENS  # noqa: E402
 from db import ensure_indexes  # noqa: E402
 from limiter import limiter  # noqa: E402
 from routes.auth import router as auth_router  # noqa: E402
@@ -82,7 +82,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 _default_origins = "http://localhost:5173,http://localhost:3000"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()],
+    allow_origins=[
+        o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],

@@ -9,6 +9,7 @@ script uploads those instead — nothing here is specific to the samples.
 Keeping the pilot corpus small is deliberate: Atlas free tier allows 512 MB, and
 embeddings are the bulk of the storage. See the README for the sizing note.
 """
+
 import os
 import sys
 from pathlib import Path

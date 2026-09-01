@@ -13,9 +13,14 @@ def test_conversation_lifecycle(client, auth):
     assert client.get(f"/api/conversations/{sid}", headers=auth).json()["title"] == "PTO"
     assert client.get("/api/conversations/missing", headers=auth).status_code == 404
 
-    assert client.patch(f"/api/conversations/{sid}", json={"title": "Renamed"}, headers=auth).json() == {"ok": True}
+    assert client.patch(
+        f"/api/conversations/{sid}", json={"title": "Renamed"}, headers=auth
+    ).json() == {"ok": True}
     assert client.get(f"/api/conversations/{sid}", headers=auth).json()["title"] == "Renamed"
-    assert client.patch("/api/conversations/missing", json={"title": "x"}, headers=auth).status_code == 404
+    assert (
+        client.patch("/api/conversations/missing", json={"title": "x"}, headers=auth).status_code
+        == 404
+    )
 
     assert client.delete(f"/api/conversations/{sid}", headers=auth).json() == {"ok": True}
     assert client.delete(f"/api/conversations/{sid}", headers=auth).status_code == 404
@@ -27,7 +32,9 @@ def test_projects_group_conversations_and_release_them_on_delete(client, auth):
     assert "_id" not in project
     assert [p["project_id"] for p in client.get("/api/projects", headers=auth).json()] == [pid]
 
-    sid = client.post("/api/conversations", json={"title": "c", "project_id": pid}, headers=auth).json()["session_id"]
+    sid = client.post(
+        "/api/conversations", json={"title": "c", "project_id": pid}, headers=auth
+    ).json()["session_id"]
     assert client.get(f"/api/conversations/{sid}", headers=auth).json()["project_id"] == pid
 
     # Explicit null unassigns; omitting the field leaves it alone.

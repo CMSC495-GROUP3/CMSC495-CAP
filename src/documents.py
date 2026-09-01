@@ -20,6 +20,7 @@ Documents are plain UTF-8 text with a short header block, blank line, then body:
 Only Title is required. To support a new input format (PDF, DOCX, Confluence
 export), convert it to this shape and the rest of the pipeline is unchanged.
 """
+
 import os
 import re
 

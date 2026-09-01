@@ -12,10 +12,12 @@ Two guarantees the rest of the application depends on:
 2. If retrieval is too weak (see config.SIMILARITY_THRESHOLD), no model call is
    made at all and the user gets an honest refusal instead of a guess.
 """
+
 import os
 
 from dotenv import load_dotenv
 
+from cache import embed_cached
 from config import (
     CONDENSE_TURNS,
     HISTORY_TURNS,
@@ -26,7 +28,6 @@ from config import (
     SIMILARITY_THRESHOLD,
     VECTOR_INDEX_NAME,
 )
-from cache import embed_cached
 from llm import get_provider
 from mongo import get_collection
 
@@ -48,6 +49,7 @@ ANSWER_SYSTEM_PROMPT = (
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
 
+
 def retrieve_passages(query: str, k: int = RETRIEVAL_K) -> list[dict]:
     """Return the k passages most semantically similar to the query.
 
@@ -59,30 +61,32 @@ def retrieve_passages(query: str, k: int = RETRIEVAL_K) -> list[dict]:
     """
     query_embedding, _ = embed_cached(query)
 
-    results = get_collection(PASSAGES_COLLECTION).aggregate([
-        {
-            "$vectorSearch": {
-                "index": VECTOR_INDEX_NAME,
-                "path": "embedding",
-                "queryVector": query_embedding,
-                "numCandidates": NUM_CANDIDATES,
-                "limit": k,
-            }
-        },
-        {
-            "$project": {
-                "_id": 0,
-                "text": 1,
-                "source": 1,
-                "doc_id": 1,
-                "title": 1,
-                "category": 1,
-                "effective_date": 1,
-                "chunk_index": 1,
-                "score": {"$meta": "vectorSearchScore"},
-            }
-        },
-    ])
+    results = get_collection(PASSAGES_COLLECTION).aggregate(
+        [
+            {
+                "$vectorSearch": {
+                    "index": VECTOR_INDEX_NAME,
+                    "path": "embedding",
+                    "queryVector": query_embedding,
+                    "numCandidates": NUM_CANDIDATES,
+                    "limit": k,
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "text": 1,
+                    "source": 1,
+                    "doc_id": 1,
+                    "title": 1,
+                    "category": 1,
+                    "effective_date": 1,
+                    "chunk_index": 1,
+                    "score": {"$meta": "vectorSearchScore"},
+                }
+            },
+        ]
+    )
 
     return list(results)
 
@@ -111,9 +115,9 @@ def confidence_score(passages: list[dict]) -> int:
 
 def cited_sources(passages: list[dict]) -> list[str]:
     """Distinct document titles behind a set of passages, order preserved."""
-    return list(dict.fromkeys(
-        p.get("title") or _title_from_source(p.get("source", "")) for p in passages
-    ))
+    return list(
+        dict.fromkeys(p.get("title") or _title_from_source(p.get("source", "")) for p in passages)
+    )
 
 
 def _title_from_source(source: str) -> str:
@@ -140,6 +144,7 @@ def build_context(passages: list[dict]) -> str:
 
 # ── Conversation helpers ──────────────────────────────────────────────────────
 
+
 def condense_question(query: str, chat_history: list[dict]) -> str:
     """Rewrite a follow-up into a standalone question for retrieval.
 
@@ -151,25 +156,30 @@ def condense_question(query: str, chat_history: list[dict]) -> str:
         return query
 
     history_text = "\n".join(
-        f"{msg['role'].capitalize()}: {msg['content']}"
-        for msg in chat_history[-CONDENSE_TURNS:]
+        f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history[-CONDENSE_TURNS:]
     )
 
     try:
-        return get_provider().complete(
-            [{
-                "role": "user",
-                "content": (
-                    f"Given this conversation:\n{history_text}\n\n"
-                    f"Rewrite the follow-up question as a fully standalone question "
-                    f"that includes all necessary context from the conversation. "
-                    f"Return only the rewritten question, nothing else.\n\n"
-                    f"Follow-up: {query}"
-                ),
-            }],
-            role="utility",
-            temperature=0,
-        ).strip()
+        return (
+            get_provider()
+            .complete(
+                [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Given this conversation:\n{history_text}\n\n"
+                            f"Rewrite the follow-up question as a fully standalone question "
+                            f"that includes all necessary context from the conversation. "
+                            f"Return only the rewritten question, nothing else.\n\n"
+                            f"Follow-up: {query}"
+                        ),
+                    }
+                ],
+                role="utility",
+                temperature=0,
+            )
+            .strip()
+        )
     except Exception:
         # Retrieval on the raw question still usually works — better than failing.
         return query
@@ -179,16 +189,18 @@ def generate_follow_ups(query: str, answer: str) -> list[str]:
     """Suggest three follow-up questions an employee might ask next."""
     try:
         text = get_provider().complete(
-            [{
-                "role": "user",
-                "content": (
-                    f"An employee asked an internal HR assistant this question and "
-                    f"got this answer.\n\nQ: {query}\nA: {answer}\n\n"
-                    f"Suggest 3 short follow-up questions they would plausibly ask "
-                    f"next about company policy. Return exactly 3 questions, one "
-                    f"per line, no numbering, no bullets, no extra text."
-                ),
-            }],
+            [
+                {
+                    "role": "user",
+                    "content": (
+                        f"An employee asked an internal HR assistant this question and "
+                        f"got this answer.\n\nQ: {query}\nA: {answer}\n\n"
+                        f"Suggest 3 short follow-up questions they would plausibly ask "
+                        f"next about company policy. Return exactly 3 questions, one "
+                        f"per line, no numbering, no bullets, no extra text."
+                    ),
+                }
+            ],
             role="utility",
             temperature=0.7,
         )
@@ -230,14 +242,17 @@ def build_messages(query: str, passages: list[dict], chat_history: list[dict]) -
     messages = [{"role": "system", "content": system_prompt}]
     for msg in chat_history[-HISTORY_TURNS:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append({
-        "role": "user",
-        "content": f"Context:\n{build_context(passages)}\n\nQuestion: {query}",
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": f"Context:\n{build_context(passages)}\n\nQuestion: {query}",
+        }
+    )
     return messages
 
 
 # ── Generation ────────────────────────────────────────────────────────────────
+
 
 def answer_question(query: str, chat_history: list[dict] | None = None) -> dict:
     """Answer a question from the policy corpus.

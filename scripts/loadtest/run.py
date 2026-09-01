@@ -15,13 +15,14 @@ to find.
 
 Start the stubbed server first (see scripts/loadtest/server.py).
 """
+
 import argparse
 import asyncio
 import json
 import statistics
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from jose import jwt
@@ -42,28 +43,30 @@ def mint_token(secret: str) -> str:
     (deliberately expensive) out of the measurement.
     """
     return jwt.encode(
-        {"sub": "loadtest", "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+        {"sub": "loadtest", "exp": datetime.now(UTC) + timedelta(hours=1)},
         secret,
         algorithm="HS256",
     )
 
 
 class Result:
-    __slots__ = ("ttfb", "total", "error", "chunks", "cached")
+    __slots__ = ("cached", "chunks", "error", "total", "ttfb")
 
     def __init__(self, ttfb=None, total=None, error=None, chunks=0, cached=False):
         self.ttfb, self.total, self.error = ttfb, total, error
         self.chunks, self.cached = chunks, cached
 
 
-async def one_stream(client: httpx.AsyncClient, url: str, token: str,
-                     question: str, session_id: str) -> Result:
+async def one_stream(
+    client: httpx.AsyncClient, url: str, token: str, question: str, session_id: str
+) -> Result:
     started = time.perf_counter()
     ttfb = None
     chunks = 0
     try:
         async with client.stream(
-            "POST", url,
+            "POST",
+            url,
             headers={"Authorization": f"Bearer {token}"},
             json={"question": question, "session_id": session_id},
             timeout=httpx.Timeout(180.0),
@@ -81,37 +84,53 @@ async def one_stream(client: httpx.AsyncClient, url: str, token: str,
                 elif "error" in payload:
                     return Result(error=payload["error"])
                 elif payload.get("done"):
-                    return Result(ttfb=ttfb, total=time.perf_counter() - started,
-                                  chunks=chunks, cached=bool(payload.get("cached")))
-    except Exception as exc:  # noqa: BLE001 — any client-side failure is a failed stream
+                    return Result(
+                        ttfb=ttfb,
+                        total=time.perf_counter() - started,
+                        chunks=chunks,
+                        cached=bool(payload.get("cached")),
+                    )
+    except Exception as exc:
         return Result(error=f"{type(exc).__name__}: {exc}")
     # Stream ended without a `done` event.
-    return Result(ttfb=ttfb, total=time.perf_counter() - started, chunks=chunks,
-                  error=None if chunks else "no data received")
+    return Result(
+        ttfb=ttfb,
+        total=time.perf_counter() - started,
+        chunks=chunks,
+        error=None if chunks else "no data received",
+    )
 
 
 def pct(values: list[float], p: float) -> float:
     if not values:
         return float("nan")
     ordered = sorted(values)
-    index = min(int(round(p / 100 * (len(ordered) - 1))), len(ordered) - 1)
+    index = min(round(p / 100 * (len(ordered) - 1)), len(ordered) - 1)
     return ordered[index]
 
 
 async def run_level(url: str, token: str, concurrency: int, run_id: str) -> dict:
-    limits = httpx.Limits(max_connections=concurrency + 10,
-                          max_keepalive_connections=concurrency + 10)
+    limits = httpx.Limits(
+        max_connections=concurrency + 10, max_keepalive_connections=concurrency + 10
+    )
     async with httpx.AsyncClient(limits=limits) as client:
         wall_start = time.perf_counter()
-        results = await asyncio.gather(*[
-            # Session ids must be unique per run. Reusing them means the second
-            # run's conversations already have history, which correctly
-            # disqualifies them from the first-turn answer cache — and would
-            # silently measure the uncached path while looking like a cache test.
-            one_stream(client, url, token,
-                       QUESTIONS[i % len(QUESTIONS)], f"load-{run_id}-{concurrency}-{i}")
-            for i in range(concurrency)
-        ])
+        results = await asyncio.gather(
+            *[
+                # Session ids must be unique per run. Reusing them means the second
+                # run's conversations already have history, which correctly
+                # disqualifies them from the first-turn answer cache — and would
+                # silently measure the uncached path while looking like a cache test.
+                one_stream(
+                    client,
+                    url,
+                    token,
+                    QUESTIONS[i % len(QUESTIONS)],
+                    f"load-{run_id}-{concurrency}-{i}",
+                )
+                for i in range(concurrency)
+            ]
+        )
         wall = time.perf_counter() - wall_start
 
     ok = [r for r in results if r.error is None]
@@ -130,9 +149,14 @@ async def run_level(url: str, token: str, concurrency: int, run_id: str) -> dict
         "wall": wall,
         "throughput": len(ok) / wall if wall else 0,
         "cache_hits": sum(1 for r in ok if r.cached),
-        "ttfb_p50": pct(ttfbs, 50), "ttfb_p95": pct(ttfbs, 95), "ttfb_max": max(ttfbs, default=float("nan")),
-        "total_p50": pct(totals, 50), "total_p95": pct(totals, 95),
-        "gen_p50": statistics.median([t - f for t, f in zip(totals, ttfbs)]) if ttfbs and totals else float("nan"),
+        "ttfb_p50": pct(ttfbs, 50),
+        "ttfb_p95": pct(ttfbs, 95),
+        "ttfb_max": max(ttfbs, default=float("nan")),
+        "total_p50": pct(totals, 50),
+        "total_p95": pct(totals, 95),
+        "gen_p50": statistics.median([t - f for t, f in zip(totals, ttfbs, strict=False)])
+        if ttfbs and totals
+        else float("nan"),
     }
 
 
@@ -142,8 +166,11 @@ async def main() -> None:
     parser.add_argument("--secret", default="loadtest-secret-not-for-real-use")
     parser.add_argument("--concurrency", type=int, nargs="+", default=[10, 20, 40, 80, 160])
     parser.add_argument("--label", default="")
-    parser.add_argument("--run-id", default="",
-                        help="Reuse a previous run's id to hit an already-warm answer cache.")
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Reuse a previous run's id to hit an already-warm answer cache.",
+    )
     args = parser.parse_args()
 
     token = mint_token(args.secret)
@@ -158,10 +185,12 @@ async def main() -> None:
     for level in args.concurrency:
         row = await run_level(args.url, token, level, run_id)
         rows.append(row)
-        print(f"  {row['concurrency']:>5} {row['completed']:>5} {row['failed']:>5} "
-              f"{row['cache_hits']:>7} "
-              f"{row['ttfb_p50']:>9.2f}s {row['ttfb_p95']:>9.2f}s "
-              f"{row['gen_p50']:>8.2f}s {row['throughput']:>7.1f}")
+        print(
+            f"  {row['concurrency']:>5} {row['completed']:>5} {row['failed']:>5} "
+            f"{row['cache_hits']:>7} "
+            f"{row['ttfb_p50']:>9.2f}s {row['ttfb_p95']:>9.2f}s "
+            f"{row['gen_p50']:>8.2f}s {row['throughput']:>7.1f}"
+        )
         if row["errors"]:
             for message, count in row["errors"].items():
                 print(f"          {count} x {message}")

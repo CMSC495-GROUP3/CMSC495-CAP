@@ -20,10 +20,11 @@ creating a second. A double click should not file two tickets. The check on
 the message is the fast path; the unique index on (session_id, message_index)
 is what holds when two requests race past it.
 """
+
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -32,8 +33,7 @@ from pymongo import DESCENDING
 from pymongo.errors import DuplicateKeyError
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
-from config import ESCALATION_CONTACT, ESCALATION_NOTE_MAX_LENGTH  # noqa: E402
-
+from config import ESCALATION_CONTACT, ESCALATION_NOTE_MAX_LENGTH
 from db import conversations_col, escalations_col
 from limiter import limiter
 from notify import deliver_escalation
@@ -68,9 +68,7 @@ class UpdateEscalationRequest(BaseModel):
 def _escalated_turn(session_id: str, message_index: int) -> tuple[dict, dict]:
     """Return (user turn, assistant turn) for the message being escalated,
     validating that the pair exists and has the expected roles."""
-    conversation = conversations_col.find_one(
-        {"session_id": session_id}, {"_id": 0, "messages": 1}
-    )
+    conversation = conversations_col.find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
@@ -102,16 +100,14 @@ def _existing_escalation(assistant: dict, session_id: str, message_index: int) -
 
 @router.post("/escalations", dependencies=[Depends(require_auth)])
 @limiter.limit("5/minute")
-def create_escalation(
-    request: Request, body: CreateEscalationRequest, background: BackgroundTasks
-):
+def create_escalation(request: Request, body: CreateEscalationRequest, background: BackgroundTasks):
     asked, assistant = _escalated_turn(body.session_id, body.message_index)
 
     existing = _existing_escalation(assistant, body.session_id, body.message_index)
     if existing:
         return existing
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     record = {
         "escalation_id": uuid.uuid4().hex,
         "status": "open",
@@ -183,7 +179,7 @@ def get_escalation(escalation_id: str):
 
 @router.patch("/escalations/{escalation_id}", dependencies=[Depends(require_auth)])
 def update_escalation(escalation_id: str, body: UpdateEscalationRequest):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updates: dict = {
         "status": body.status,
         "updated_at": now,

@@ -29,10 +29,11 @@ MongoDB requires a `collMod`, not a re-create. If you change one of the TTL
 settings in config.py, drop the index by hand or run collMod. This is exactly
 the kind of change that looks harmless and fails at startup.
 """
+
 import hashlib
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from config import (
     ANSWER_CACHE_TTL_SECONDS,
@@ -61,6 +62,7 @@ def question_hash(question: str) -> str:
 
 # ── Corpus version ────────────────────────────────────────────────────────────
 
+
 def get_corpus_version() -> str:
     """Current corpus version, creating it on first call.
 
@@ -71,7 +73,7 @@ def get_corpus_version() -> str:
     """
     doc = get_collection("meta").find_one_and_update(
         {"_id": "corpus"},
-        {"$setOnInsert": {"version": uuid.uuid4().hex, "updated_at": datetime.now(timezone.utc)}},
+        {"$setOnInsert": {"version": uuid.uuid4().hex, "updated_at": datetime.now(UTC)}},
         upsert=True,
         return_document=True,
     )
@@ -83,13 +85,14 @@ def bump_corpus_version() -> str:
     version = uuid.uuid4().hex
     get_collection("meta").update_one(
         {"_id": "corpus"},
-        {"$set": {"version": version, "updated_at": datetime.now(timezone.utc)}},
+        {"$set": {"version": version, "updated_at": datetime.now(UTC)}},
         upsert=True,
     )
     return version
 
 
 # ── Embedding cache ───────────────────────────────────────────────────────────
+
 
 def embedding_cache_key(text: str) -> str:
     return _digest(normalize(text), get_provider().embedding_fingerprint())
@@ -109,7 +112,7 @@ def put_cached_embedding(text: str, embedding: list[float]) -> None:
         return
     get_collection("embedding_cache").update_one(
         {"_id": embedding_cache_key(text)},
-        {"$set": {"embedding": embedding, "created_at": datetime.now(timezone.utc)}},
+        {"$set": {"embedding": embedding, "created_at": datetime.now(UTC)}},
         upsert=True,
     )
 
@@ -125,6 +128,7 @@ def embed_cached(text: str) -> tuple[list[float], bool]:
 
 
 # ── Answer cache ──────────────────────────────────────────────────────────────
+
 
 def answer_cache_key(question: str, corpus_version: str) -> str:
     """Key an answer to everything that could change it.
@@ -153,7 +157,7 @@ def get_cached_answer(question: str, corpus_version: str) -> dict | None:
     key = answer_cache_key(question, corpus_version)
     doc = get_collection("answer_cache").find_one_and_update(
         {"_id": key},
-        {"$inc": {"hits": 1}, "$set": {"last_hit_at": datetime.now(timezone.utc)}},
+        {"$inc": {"hits": 1}, "$set": {"last_hit_at": datetime.now(UTC)}},
         return_document=True,
     )
     if not doc:
@@ -184,7 +188,7 @@ def put_cached_answer(question: str, corpus_version: str, result: dict) -> None:
                 "confidence": result.get("confidence"),
                 "follow_ups": result.get("follow_ups", []),
                 "refused": result.get("refused", False),
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             },
             "$setOnInsert": {"hits": 0},
         },

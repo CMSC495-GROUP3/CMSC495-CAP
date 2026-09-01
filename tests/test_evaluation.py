@@ -6,7 +6,6 @@ import pytest
 
 from evaluation import load_cases, score_results
 
-
 DATASET = Path(__file__).resolve().parent.parent / "evaluation" / "questions.json"
 
 
@@ -102,18 +101,22 @@ def test_score_results_reports_required_metrics():
 
 
 def test_score_results_uses_none_when_a_metric_has_no_eligible_cases():
-    cases = [{
-        "id": "amb1",
-        "category": "ambiguous",
-        "expected_sources": ["Policy A"],
-        "expected_outcome": "clarify",
-    }]
-    results = [{
-        "id": "amb1",
-        "retrieved_sources": ["Policy A"],
-        "cited_sources": ["Policy A"],
-        "refused": False,
-    }]
+    cases = [
+        {
+            "id": "amb1",
+            "category": "ambiguous",
+            "expected_sources": ["Policy A"],
+            "expected_outcome": "clarify",
+        }
+    ]
+    results = [
+        {
+            "id": "amb1",
+            "retrieved_sources": ["Policy A"],
+            "cited_sources": ["Policy A"],
+            "refused": False,
+        }
+    ]
 
     report = score_results(cases, results)
 

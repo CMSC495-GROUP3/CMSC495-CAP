@@ -7,6 +7,7 @@ Run once after the documents are in S3, and again whenever they change:
 This is the "embed documents once into Atlas" half of the design. Nothing here
 runs at query time.
 """
+
 import os
 import sys
 
@@ -14,13 +15,13 @@ import boto3
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from cache import bump_corpus_version
 from config import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
     PASSAGES_COLLECTION,
     S3_DOCUMENT_PREFIX,
 )
-from cache import bump_corpus_version
 from documents import parse_document, passage_records
 from llm import get_provider
 from mongo import get_collection

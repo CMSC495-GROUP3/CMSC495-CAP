@@ -1,4 +1,5 @@
 """Offline ingestion behavior with AWS, MongoDB, and the model provider stubbed."""
+
 import importlib
 import sys
 

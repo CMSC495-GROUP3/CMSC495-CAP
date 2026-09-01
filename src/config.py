@@ -7,6 +7,7 @@ this module because it adds src/ to sys.path at import time.
 Every value can be overridden with an environment variable so the pilot can be
 retuned without a code change.
 """
+
 import os
 
 # ── Product identity ──────────────────────────────────────────────────────────

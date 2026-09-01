@@ -12,6 +12,7 @@ in-memory Mongo. Everything that would reach the network is replaced before
 No test-only branch exists in src/ or backend/. If something cannot be stubbed
 from here, that is a design problem to fix in the application, not in tests.
 """
+
 import os
 import sys
 from datetime import timedelta
@@ -39,9 +40,8 @@ from passlib.context import CryptContext  # noqa: E402
 
 os.environ["APP_PASSWORD_HASH"] = CryptContext(schemes=["bcrypt"]).hash(TEST_PASSWORD)
 
-from fakemongo import FakeDB  # noqa: E402
-
 import mongo  # noqa: E402
+from fakemongo import FakeDB  # noqa: E402
 
 FAKE_DB = FakeDB()
 mongo.get_db = lambda: FAKE_DB
@@ -55,13 +55,14 @@ import main  # noqa: E402
 
 main.ensure_indexes = lambda: None
 
+from fastapi.testclient import TestClient  # noqa: E402
+
 import routes.chat as chat_routes  # noqa: E402
 from limiter import limiter  # noqa: E402
 from routes.auth import create_access_token  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
+
 
 def make_passages(*scores: float, title: str = "Paid Time Off (PTO) Policy") -> list[dict]:
     """Canned retrieval results carrying the given similarity scores."""
@@ -85,13 +86,12 @@ def sse_events(body: str) -> list[dict]:
     import json
 
     return [
-        json.loads(line[len("data: "):])
-        for line in body.split("\n")
-        if line.startswith("data: ")
+        json.loads(line[len("data: ") :]) for line in body.split("\n") if line.startswith("data: ")
     ]
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def clean_db():
@@ -145,4 +145,6 @@ def retrieval(monkeypatch) -> Retrieval:
 @pytest.fixture
 def conversation(client, auth) -> str:
     """A fresh, empty conversation. Returns its session_id."""
-    return client.post("/api/conversations", json={"title": "test"}, headers=auth).json()["session_id"]
+    return client.post("/api/conversations", json={"title": "test"}, headers=auth).json()[
+        "session_id"
+    ]

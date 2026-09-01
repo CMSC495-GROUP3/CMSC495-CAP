@@ -13,13 +13,15 @@ Two logical roles are exposed instead of concrete model names:
 
 A provider maps those roles onto whatever models it actually has.
 """
+
 import hashlib
 import math
 import os
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import Iterator, Literal
+from collections.abc import Iterator
+from typing import Literal
 
 ModelRole = Literal["answer", "utility"]
 
@@ -115,7 +117,7 @@ class OpenAIProvider(LLMProvider):
         return f"{self.name}:{self.EMBEDDING_MODEL}"
 
     def answer_fingerprint(self) -> str:
-        return f"{self.name}:{self.ANSWER_MODEL}" 
+        return f"{self.name}:{self.ANSWER_MODEL}"
 
     def embed(self, text: str) -> list[float]:
         response = self._client.embeddings.create(

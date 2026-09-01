@@ -1,4 +1,5 @@
 """Answer and embedding caches, and the corpus version that keys them."""
+
 import cache
 from cache import (
     bump_corpus_version,
@@ -13,8 +14,11 @@ from cache import (
 from conftest import FAKE_DB
 
 RESULT = {
-    "answer": "15 days.", "sources": ["PTO Policy"], "confidence": 78,
-    "follow_ups": ["a", "b", "c"], "refused": False,
+    "answer": "15 days.",
+    "sources": ["PTO Policy"],
+    "confidence": 78,
+    "follow_ups": ["a", "b", "c"],
+    "refused": False,
 }
 
 

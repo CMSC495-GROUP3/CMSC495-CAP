@@ -7,6 +7,7 @@ seeing that directly is faster than discovering it through a refusal.
 Reads from the denormalized documents collection rather than passages, so
 listing the corpus never touches the embedding vectors.
 """
+
 import os
 import re
 import sys
@@ -15,8 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ASCENDING, UpdateOne
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
-from cache import bump_corpus_version, get_corpus_version  # noqa: E402
-
+from cache import bump_corpus_version, get_corpus_version
 from db import documents_col, meta_col, passages_col
 from routes.deps import require_auth
 
@@ -80,16 +80,19 @@ def rebuild_document_index() -> int:
 
     for passage in cursor:
         source = passage["source"]
-        entry = by_source.setdefault(source, {
-            "source": source,
-            "doc_id": passage.get("doc_id"),
-            "title": passage.get("title") or source,
-            "category": passage.get("category"),
-            "owner": passage.get("owner"),
-            "effective_date": passage.get("effective_date"),
-            "passage_count": 0,
-            "preview": "",
-        })
+        entry = by_source.setdefault(
+            source,
+            {
+                "source": source,
+                "doc_id": passage.get("doc_id"),
+                "title": passage.get("title") or source,
+                "category": passage.get("category"),
+                "owner": passage.get("owner"),
+                "effective_date": passage.get("effective_date"),
+                "passage_count": 0,
+                "preview": "",
+            },
+        )
         entry["passage_count"] += 1
         if passage.get("chunk_index") == 0:
             entry["preview"] = _preview(passage.get("text", ""))
@@ -97,10 +100,12 @@ def rebuild_document_index() -> int:
     if not by_source:
         return 0
 
-    documents_col.bulk_write([
-        UpdateOne({"source": source}, {"$set": doc}, upsert=True)
-        for source, doc in by_source.items()
-    ])
+    documents_col.bulk_write(
+        [
+            UpdateOne({"source": source}, {"$set": doc}, upsert=True)
+            for source, doc in by_source.items()
+        ]
+    )
 
     # Drop records for documents removed from the corpus since the last build
     documents_col.delete_many({"source": {"$nin": list(by_source)}})
