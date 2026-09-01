@@ -1,0 +1,6 @@
+# Test dependencies. Install alongside both runtime files:
+#   pip install -r requirements.txt -r backend/requirements.txt -r requirements-dev.txt
+pytest
+pytest-cov
+# FastAPI's TestClient is built on httpx
+httpx

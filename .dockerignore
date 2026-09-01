@@ -1,0 +1,20 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Frontend (not needed in the backend build context)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Sample corpus — uploaded to S3 by seed_documents.py, not needed in the image
+data/
+
+# Git / IDE / docs
+.git/
+.gitignore
+*.md
