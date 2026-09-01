@@ -1,6 +1,6 @@
 # Stage 1 — build the React app
 # Build context is frontend/ so all paths here are relative to that directory.
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
