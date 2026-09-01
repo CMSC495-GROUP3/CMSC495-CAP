@@ -1,7 +1,7 @@
 # Build context is the project root (set in docker-compose.yml) so this image
 # can reach both backend/ and src/.
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
