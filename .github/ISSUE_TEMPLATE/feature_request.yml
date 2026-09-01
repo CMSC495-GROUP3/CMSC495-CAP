@@ -1,0 +1,32 @@
+name: Feature request
+description: Something the assistant, the API, or the tooling should do and does not.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Who hits it, when, and what they do today instead. Lead with the problem, not the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: A sentence or two is enough. Name the files or endpoints if you know them.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Where it lands
+      options:
+        - label: Backend or RAG pipeline (`backend/`, `src/`)
+        - label: Frontend (`frontend/`)
+        - label: Evaluation set or metrics (`evaluation/`)
+        - label: Tooling, CI, or deployment

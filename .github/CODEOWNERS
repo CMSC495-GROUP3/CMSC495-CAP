@@ -1,0 +1,5 @@
+# GitHub requests a review from these accounts on every PR. With "require
+# review from code owners" turned on in branch protection, one of them has to
+# approve before a merge. Add a line with a path to give an area its own owner.
+
+* @DanielTsang26 @t-shahan @Lazzy-dev

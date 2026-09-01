@@ -1,0 +1,43 @@
+# Path-based labels applied by the "PR checks" workflow on PRs from branches in
+# this repository. Labels that do not exist yet are created on first use.
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: ["backend/**", "src/**"]
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: ["frontend/**"]
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ["tests/**", "pytest.ini"]
+
+evaluation:
+  - changed-files:
+      - any-glob-to-any-file: ["evaluation/**", "src/evaluation.py"]
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.md"]
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: [".github/**", "Makefile", "ruff.toml", "scripts/audit.sh"]
+
+infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docker-compose.yml"
+          - "**/Dockerfile"
+          - "**/nginx.conf"
+          - "scripts/deploy.sh"
+          - "scripts/ec2-scheduler-setup.sh"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "requirements*.txt"
+          - "backend/requirements.txt"
+          - "frontend/package.json"
+          - "frontend/package-lock.json"

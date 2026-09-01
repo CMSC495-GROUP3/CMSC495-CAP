@@ -1,0 +1,55 @@
+name: Answer quality
+description: The assistant answered wrongly, refused when it should not have, or answered when it should have refused.
+title: "eval: "
+labels: [bug, evaluation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A good report here becomes a case in `evaluation/questions.json`, so the
+        fields below mirror that file. Only report questions asked against the
+        real services; `make stub` returns canned text and says nothing about
+        retrieval quality.
+  - type: input
+    id: question
+    attributes:
+      label: The question, exactly as asked
+    validations:
+      required: true
+  - type: dropdown
+    id: expected_outcome
+    attributes:
+      label: What should have happened
+      options:
+        - answer (a supported answer citing the right policy)
+        - refuse (the corpus does not cover this)
+        - clarify (the question is ambiguous; ask which case applies)
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What it did instead
+      description: The answer text, the refusal, or the clarifying question, and which sources it cited.
+    validations:
+      required: true
+  - type: input
+    id: expected_sources
+    attributes:
+      label: Policy document(s) that should have been cited
+      placeholder: documents/pto-policy.md
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: Same categories as the evaluation set.
+      options:
+        - answerable
+        - unanswerable
+        - ambiguous
+        - prompt_injection
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: The `best_score` from `query_logs` if you have it, whether the passage exists in the corpus, or whether the chunk boundary looks wrong.
