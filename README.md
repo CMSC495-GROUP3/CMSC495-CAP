@@ -42,7 +42,8 @@ flowchart LR
     EMBED --> MONGO[("MongoDB Atlas<br/>passages + metadata + vectors")]
 
     USER["Employee"] --> REACT["React + TypeScript"]
-    REACT --> NGINX["Nginx"]
+    REACT --> CADDY["Caddy (TLS)"]
+    CADDY --> NGINX["Nginx"]
     NGINX --> API["FastAPI"]
     API --> MONGO
     MONGO -->|"top-k passages + scores"| API
@@ -54,11 +55,13 @@ flowchart LR
     REACT -->|"Ask People Operations"| ESC["Escalation record<br/>+ optional webhook"]
 ```
 
-Docker Compose builds two services. `frontend` compiles the React app and serves
-it through Nginx, which also proxies `/api/` and disables buffering so streamed
-tokens are not held back. `backend` runs FastAPI with the RAG pipeline mounted
-from `src/`. OpenAI, MongoDB Atlas, and Amazon S3 are external managed services
-and are not part of the Compose environment.
+Docker Compose runs three services. `caddy` is the only one with published
+ports: it terminates TLS with a Let's Encrypt certificate for `SITE_ADDRESS` and
+forwards to `frontend`. `frontend` compiles the React app and serves it through
+Nginx, which also proxies `/api/` and disables buffering so streamed tokens are
+not held back. `backend` runs FastAPI with the RAG pipeline mounted from `src/`.
+OpenAI, MongoDB Atlas, and Amazon S3 are external managed services and are not
+part of the Compose environment.
 
 ## How a question is answered
 
@@ -186,7 +189,7 @@ months. Measured against the sample corpus:
 Storage is not the binding constraint at pilot scale; a corpus two orders of
 magnitude larger still fits. The real costs are per-query embedding and
 generation calls, which is the other reason the grounding gate runs before
-generation. `scripts/ec2-scheduler-setup.sh` stops the instance overnight.
+generation.
 
 ## Throughput
 
@@ -339,11 +342,41 @@ automatically at backend startup by `ensure_indexes()` in `backend/db.py`.
 docker compose up --build
 ```
 
-Open `http://localhost:3000`. Health check at `http://localhost:3000/api/health`,
-interactive API docs at `http://localhost:8000/docs`.
+Open `http://localhost`. Health check at `http://localhost/api/health`. The
+backend port is not published by Compose; the interactive API docs are at
+`http://localhost:8000/docs` when the API runs outside Docker, as below.
 
 For frontend development with hot reload, run `npm run dev` in `frontend/` and
 start the API separately with `uvicorn main:app --reload` from `backend/`.
+
+### 4. Deploy
+
+The pilot runs on a single EC2 instance behind the free DNS name
+`policy-assistant.duckdns.org`. Caddy fetches the certificate, so the instance
+needs no manual TLS setup.
+
+1. Give the instance an Elastic IP. A stopped and restarted instance otherwise
+   gets a new public address and the DNS record goes stale.
+2. In the DuckDNS dashboard, set the subdomain's IP to that address.
+3. Security group inbound rules: 80 and 443 from anywhere, 22 from your own
+   address. Leave 3000 and 8000 closed; nothing listens on them.
+4. On the instance, install Docker, clone the repository, and write `.env` as
+   in step 1 with one extra line:
+   ```
+   SITE_ADDRESS=policy-assistant.duckdns.org
+   ```
+5. Start the stack:
+   ```bash
+   docker compose up -d --build
+   ```
+   The DNS name must already resolve to the instance. Caddy answers the
+   Let's Encrypt HTTP challenge on port 80 on the first request, and if the
+   challenge fails it retries with backoff; `docker compose logs caddy` shows
+   why.
+
+Later deploys go through `scripts/deploy.sh`, which pulls, rebuilds without
+cache, and restarts the stack over SSH. Certificates persist in the `caddy_data`
+volume across restarts and deploys.
 
 ## Tests
 
@@ -410,7 +443,7 @@ src/        The RAG pipeline, importable by the backend
   embed_documents.py / seed_documents.py   offline ingestion
 frontend/   React, TypeScript, Tailwind, Vite, served by Nginx
 data/       Sample policy corpus
-scripts/    EC2 deploy helpers, instance scheduling, and the load-test harness
+scripts/    EC2 deploy helper, dependency audit, and the load-test harness
 tests/      pytest suite; conftest.py stubs every external service
 ```
 

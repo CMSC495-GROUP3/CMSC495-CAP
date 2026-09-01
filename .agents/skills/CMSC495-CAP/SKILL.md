@@ -48,7 +48,7 @@ src/                the pipeline, imported by the backend by bare module name
 frontend/src/       components/{Auth,Chat,Documents,Layout}, hooks/useChat.ts, pages/, api/client.ts, config.ts
 tests/              conftest.py stubs Mongo, the model, vector search, and index creation before importing main
 scripts/loadtest/   fakemongo.py (partial in-memory Mongo), server.py (the stub app), run.py
-scripts/            deploy.sh, ec2-scheduler-setup.sh, audit.sh
+scripts/            deploy.sh, audit.sh
 evaluation/         20 labeled questions and the metric definitions
 data/               sample policy corpus
 .github/            workflows (ci, security, pr-checks, evaluation), templates, Dependabot, CODEOWNERS

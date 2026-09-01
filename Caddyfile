@@ -1,0 +1,14 @@
+# Reverse proxy and TLS in front of the Nginx container.
+#
+# SITE_ADDRESS comes from .env through docker-compose.yml. A bare hostname such
+# as policy-assistant.duckdns.org turns on automatic HTTPS: Caddy answers the
+# Let's Encrypt HTTP challenge on port 80, so the name must already resolve to
+# this host before the stack starts. The local default, http://localhost, serves
+# plain HTTP with no certificate.
+#
+# Caddy flushes text/event-stream responses as they arrive, so the chat stream
+# needs no extra configuration here.
+{$SITE_ADDRESS} {
+    reverse_proxy frontend:80
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}

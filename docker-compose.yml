@@ -1,16 +1,25 @@
 services:
 
-  backend:
-    build:
-      # Root context so the image can copy both backend/ and src/
-      context: .
-      dockerfile: backend/Dockerfile
-    env_file:
-      - .env
-    # Published for local testing. In production Nginx proxies to this port on
-    # the internal Compose network and this mapping can be dropped.
+  # TLS termination. Caddy obtains and renews a Let's Encrypt certificate for
+  # SITE_ADDRESS and forwards everything to Nginx on the internal network. With
+  # SITE_ADDRESS unset it serves plain HTTP on localhost, which is what
+  # `make compose` uses.
+  caddy:
+    image: caddy:2-alpine
     ports:
-      - "8000:8000"
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-http://localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. The volume must survive `docker compose down`,
+      # which deploy.sh runs on every deploy; without it each deploy would
+      # request a new certificate and run into Let's Encrypt's issuance limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
     restart: unless-stopped
 
   frontend:
@@ -18,8 +27,21 @@ services:
       # Self-contained context — the build needs nothing from the parent
       context: frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:80"
+    # Not published. Caddy reaches Nginx on port 80 over the Compose network.
     depends_on:
       - backend
     restart: unless-stopped
+
+  backend:
+    build:
+      # Root context so the image can copy both backend/ and src/
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    # Not published. Nginx proxies /api/ to this container on port 8000.
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

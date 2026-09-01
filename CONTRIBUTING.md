@@ -71,7 +71,8 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
 
    In dev mode the API is at http://localhost:8000 and the OpenAPI console at
    http://localhost:8000/docs, which is the fastest way to poke an endpoint by
-   hand. In Compose the app is at http://localhost:3000.
+   hand. In Compose the app is at http://localhost, served by Caddy in front
+   of Nginx; only Caddy publishes ports.
 
 ## Checking a change
 
@@ -230,7 +231,7 @@ covers `.env`; the rest is on you.
 
 - `make stub` in one terminal, `make loadtest` in another. Method, numbers, and
   caveats in `scripts/loadtest/RESULTS.md`.
-- `scripts/deploy.sh` pulls and rebuilds the Compose stack on an EC2 host;
-  `scripts/ec2-scheduler-setup.sh` stops the instance overnight. Both have their
-  usage at the top of the file, and both touch real infrastructure, so read them
-  before running them.
+- `scripts/deploy.sh` pulls and rebuilds the Compose stack on the EC2 host.
+  Its usage is at the top of the file, and it touches real infrastructure, so
+  read it before running it. The host setup (Elastic IP, DuckDNS record,
+  security group, `SITE_ADDRESS` in `.env`) is in the README's Deploy section.
