@@ -8,7 +8,7 @@ python-jose[cryptography]
 passlib[bcrypt]
 # Pinned: passlib 1.7.4 is incompatible with bcrypt 5.x, which removed the
 # __about__ attribute passlib reads to detect the backend version.
-bcrypt==4.0.1
+bcrypt==4.3.0
 
 # Model provider — used by src/llm.py
 openai
