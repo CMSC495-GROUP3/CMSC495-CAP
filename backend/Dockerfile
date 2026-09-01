@@ -17,4 +17,7 @@ COPY src/ /src
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers makes request.client the real caller rather than the Nginx
+# container, which the rate limiter keys on. Only the Compose network can reach
+# this port, so trusting every proxy address is safe.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]

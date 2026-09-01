@@ -32,7 +32,7 @@ infra:
           - "**/Dockerfile"
           - "**/nginx.conf"
           - "scripts/deploy.sh"
-          - "scripts/ec2-scheduler-setup.sh"
+          - "Caddyfile"
 
 dependencies:
   - changed-files:

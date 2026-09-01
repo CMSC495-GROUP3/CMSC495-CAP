@@ -14,6 +14,9 @@ frontend/.vite/
 # Sample corpus — uploaded to S3 by seed_documents.py, not needed in the image
 data/
 
+# Caddy config is bind-mounted, not baked into an image
+Caddyfile
+
 # Git / IDE / docs
 .git/
 .gitignore
