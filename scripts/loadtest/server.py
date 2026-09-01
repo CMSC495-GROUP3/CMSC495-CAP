@@ -36,6 +36,7 @@ noise. Rather than fake the gate, bracket it — run the whole test twice:
 
 Real traffic sits between the two, weighted by the actual refusal rate.
 """
+
 import os
 import sys
 import time
@@ -116,9 +117,8 @@ def _fake_retrieve(query: str, k: int = 5) -> list[dict]:
 
 # Route every collection through the in-memory fake before importing the app,
 # so db.py's module-level handles bind to fakes rather than to a real cluster.
-from fakemongo import FakeDB  # noqa: E402
-
 import mongo  # noqa: E402
+from fakemongo import FakeDB  # noqa: E402
 
 _FAKE_DB = FakeDB()
 mongo.get_db = lambda: _FAKE_DB
@@ -130,6 +130,7 @@ cache.get_collection = mongo.get_collection
 
 import main  # noqa: E402
 import routes.chat as chat_routes  # noqa: E402
+
 
 def _startup() -> None:
     """Replaces ensure_indexes in the lifespan.

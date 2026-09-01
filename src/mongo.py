@@ -37,6 +37,7 @@ accessor functions so nothing is bound at import.
 Constructing a client performs no I/O — pymongo connects on the first real
 operation — so import stays fast either way.
 """
+
 import os
 from threading import Lock
 

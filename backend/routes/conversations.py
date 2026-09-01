@@ -1,6 +1,7 @@
 """Conversation CRUD endpoints."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -40,7 +41,7 @@ def list_conversations():
 
 @router.post("/conversations", dependencies=[Depends(require_auth)])
 def create_conversation(body: CreateConversationRequest):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     doc = {
         "session_id": str(uuid.uuid4()),
         "title": body.title,
@@ -63,7 +64,7 @@ def get_conversation(session_id: str):
 
 @router.patch("/conversations/{session_id}", dependencies=[Depends(require_auth)])
 def update_conversation(session_id: str, body: UpdateConversationRequest):
-    updates: dict = {"updated_at": datetime.now(timezone.utc)}
+    updates: dict = {"updated_at": datetime.now(UTC)}
 
     if "title" in body.model_fields_set and body.title is not None:
         updates["title"] = body.title
@@ -73,9 +74,7 @@ def update_conversation(session_id: str, body: UpdateConversationRequest):
     if "project_id" in body.model_fields_set:
         updates["project_id"] = body.project_id
 
-    result = conversations_col.update_one(
-        {"session_id": session_id}, {"$set": updates}
-    )
+    result = conversations_col.update_one({"session_id": session_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return {"ok": True}

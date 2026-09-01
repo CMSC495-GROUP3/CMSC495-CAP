@@ -1,0 +1,55 @@
+# Weekly dependency update PRs, grouped so one PR per ecosystem lands on Monday
+# rather than a dozen. Security advisories still open their own PR immediately.
+
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python:
+        patterns: ["*"]
+    labels: [dependencies]
+
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      backend-python:
+        patterns: ["*"]
+    labels: [dependencies]
+    ignore:
+      # passlib 1.7.4 breaks on bcrypt 5.x; see backend/requirements.txt.
+      - dependency-name: bcrypt
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies, ci]
+
+  - package-ecosystem: docker
+    directories: [/backend, /frontend]
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, infra]

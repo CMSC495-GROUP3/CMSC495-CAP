@@ -1,4 +1,5 @@
 """The retrieval side of the pipeline: grounding gate, scoring, prompt assembly."""
+
 import pytest
 
 import rag_chain
@@ -45,7 +46,11 @@ class TestConfidence:
 
 class TestSources:
     def test_deduplicates_titles_preserving_order(self):
-        passages = make_passages(0.9, title="B") + make_passages(0.8, title="A") + make_passages(0.7, title="B")
+        passages = (
+            make_passages(0.9, title="B")
+            + make_passages(0.8, title="A")
+            + make_passages(0.7, title="B")
+        )
         assert cited_sources(passages) == ["B", "A"]
 
     def test_falls_back_to_readable_filename(self):
@@ -82,7 +87,10 @@ class TestPromptAssembly:
         ]
         manifest = build_citation_manifest(history)
         assert manifest.splitlines() == [
-            "Documents already cited in this conversation:", "- Doc A", "- Doc B", "- Doc C",
+            "Documents already cited in this conversation:",
+            "- Doc A",
+            "- Doc B",
+            "- Doc C",
         ]
         assert manifest in build_messages("q", make_passages(0.9), history)[0]["content"]
 
@@ -120,10 +128,13 @@ class TestConversationHelpers:
         assert generate_follow_ups("q", "a") == []
 
 
-@pytest.mark.parametrize("source,expected", [
-    ("documents/pto-policy.md", "Pto Policy"),
-    ("a/b/c/remote_work.txt", "Remote Work"),
-    ("", ""),
-])
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("documents/pto-policy.md", "Pto Policy"),
+        ("a/b/c/remote_work.txt", "Remote Work"),
+        ("", ""),
+    ],
+)
 def test_title_from_source(source, expected):
     assert rag_chain._title_from_source(source) == expected

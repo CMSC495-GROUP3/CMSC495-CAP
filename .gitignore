@@ -7,3 +7,6 @@ venv/
 .coverage
 .pytest_cache/
 evaluation/results.json
+coverage.xml
+junit.xml
+htmlcov/

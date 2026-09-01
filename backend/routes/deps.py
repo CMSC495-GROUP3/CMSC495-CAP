@@ -1,9 +1,10 @@
 """Shared FastAPI dependencies — primarily JWT verification."""
+
 import os
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 
 # No default — main.py already enforced this is set at startup
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
@@ -21,4 +22,4 @@ def require_auth(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None

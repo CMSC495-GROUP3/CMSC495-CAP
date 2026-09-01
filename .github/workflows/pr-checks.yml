@@ -1,0 +1,77 @@
+# Checks on the pull request itself rather than on the code: the title, the
+# description, and labels. None of these need write access to the repository
+# except labeling, which is skipped on PRs from forks (their token is read-only).
+
+name: PR checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  title:
+    # Titles become the merge commit subject, so they follow the same
+    # `type: what changed` rule as commits (CONTRIBUTING.md, "Getting a change
+    # merged").
+    name: 'Title follows "type: what changed"'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            refactor
+            docs
+            test
+            chore
+            perf
+            ci
+          requireScope: false
+          # Lower-case start, like the git log.
+          subjectPattern: ^[a-z].+$
+          subjectPatternError: >
+            The subject after "type:" should start with a lower-case letter and
+            say what changed, for example "fix: never cache an abandoned stream".
+
+  description:
+    name: Description is filled in
+    runs-on: ubuntu-latest
+    steps:
+      - name: Body has the "What and why" section with text under it
+        env:
+          # Passed through env, never interpolated into the script, so a body
+          # containing shell syntax cannot run anything.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! grep -q '^## What and why' <<< "$PR_BODY"; then
+            echo "::error::Keep the '## What and why' heading from the PR template and write under it."
+            exit 1
+          fi
+          # Strip HTML comments (the template's hints) and headings, then see
+          # whether any prose is left before the next section.
+          prose=$(sed -n '/^## What and why/,/^## How to check it/p' <<< "$PR_BODY" \
+            | sed -e 's/<!--.*-->//g' -e '/^<!--/,/-->/d' -e '/^## /d' \
+            | tr -d '[:space:]')
+          if [[ -z "$prose" ]]; then
+            echo "::error::Say what changed and why under '## What and why'."
+            exit 1
+          fi
+
+  labels:
+    name: Labels by changed paths
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v7
+        with:
+          sync-labels: true

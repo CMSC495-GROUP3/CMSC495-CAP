@@ -7,6 +7,7 @@ that looks complete and diverges under conditions nobody tested.
 Shared by the load-test server and the cache/analytics checks so both exercise
 the same behaviour.
 """
+
 from __future__ import annotations
 
 import copy
@@ -28,6 +29,7 @@ def _matches(doc: dict, query: dict) -> bool:
                     return False
                 if op == "$regex":
                     import re as _re
+
                     flags = _re.IGNORECASE if "i" in condition.get("$options", "") else 0
                     if value is None or not _re.search(operand, str(value), flags):
                         return False
@@ -73,7 +75,7 @@ def _apply_update(doc: dict, update: dict, inserted: bool) -> None:
     for field, value in update.get("$inc", {}).items():
         doc[field] = doc.get(field, 0) + value
     for field, spec in update.get("$push", {}).items():
-        doc.setdefault(field, []).extend(spec["$each"] if "$each" in spec else [spec])
+        doc.setdefault(field, []).extend(spec.get("$each", [spec]))
     if inserted:
         for field, value in update.get("$setOnInsert", {}).items():
             doc.setdefault(field, value)
@@ -86,11 +88,11 @@ class _Cursor:
     def sort(self, key, direction=1):
         if isinstance(key, list):
             for field, dirn in reversed(key):
-                self._docs.sort(key=lambda d: (d.get(field) is None, d.get(field)),
-                                reverse=dirn < 0)
+                self._docs.sort(
+                    key=lambda d: (d.get(field) is None, d.get(field)), reverse=dirn < 0
+                )
         else:
-            self._docs.sort(key=lambda d: (d.get(key) is None, d.get(key)),
-                            reverse=direction < 0)
+            self._docs.sort(key=lambda d: (d.get(key) is None, d.get(key)), reverse=direction < 0)
         return self
 
     def skip(self, n):
@@ -119,8 +121,7 @@ class FakeCollection:
         return None
 
     def find(self, query: dict | None = None, projection: dict | None = None):
-        return _Cursor([_project(d, projection)
-                        for d in self._docs if _matches(d, query or {})])
+        return _Cursor([_project(d, projection) for d in self._docs if _matches(d, query or {})])
 
     def count_documents(self, query: dict) -> int:
         return sum(1 for d in self._docs if _matches(d, query))
@@ -152,8 +153,9 @@ class FakeCollection:
             return type("R", (), {"matched_count": 0, "modified_count": 0})()
         return type("R", (), {"matched_count": 0, "modified_count": 0})()
 
-    def find_one_and_update(self, query: dict, update: dict, upsert: bool = False,
-                            return_document: Any = True, **kwargs):
+    def find_one_and_update(
+        self, query: dict, update: dict, upsert: bool = False, return_document: Any = True, **kwargs
+    ):
         for doc in self._docs:
             if _matches(doc, query):
                 _apply_update(doc, update, inserted=False)

@@ -1,4 +1,5 @@
 """Source-format abstraction: header parsing and passage records."""
+
 from documents import doc_id_from_key, parse_document, passage_records
 
 RAW = """Title: Paid Time Off (PTO) Policy

@@ -10,6 +10,7 @@ The payload has a top-level `text` field so Slack and Teams incoming webhooks
 render it as a message with no adapter. Any other receiver can read the full
 `escalation` object beside it.
 """
+
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from config import (  # noqa: E402
+from config import (
     ESCALATION_WEBHOOK_TIMEOUT_SECONDS,
     ESCALATION_WEBHOOK_URL,
 )
@@ -74,5 +75,7 @@ def deliver_escalation(record: dict, webhook_url: str | None = None) -> bool:
     except urllib.error.HTTPError as error:
         logger.error("Escalation %s webhook returned %s", record["escalation_id"], error.code)
     except (urllib.error.URLError, OSError, ValueError):
-        logger.exception("Escalation %s stored but webhook delivery failed", record["escalation_id"])
+        logger.exception(
+            "Escalation %s stored but webhook delivery failed", record["escalation_id"]
+        )
     return False

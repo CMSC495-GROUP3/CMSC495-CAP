@@ -1,11 +1,11 @@
-import os
 import logging
-from datetime import datetime, timedelta, timezone
+import os
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel
 from jose import jwt
 from passlib.context import CryptContext
+from pydantic import BaseModel
 
 from limiter import limiter
 
@@ -31,7 +31,7 @@ class TokenResponse(BaseModel):
 
 def create_access_token(data: dict, expires_delta: timedelta) -> str:
     payload = data.copy()
-    payload.update({"exp": datetime.now(timezone.utc) + expires_delta})
+    payload.update({"exp": datetime.now(UTC) + expires_delta})
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -47,7 +47,9 @@ def login(request: Request, body: LoginRequest):
         )
 
     if not pwd_context.verify(body.password, password_hash):
-        logger.warning("Failed login attempt from %s", request.client.host if request.client else "unknown")
+        logger.warning(
+            "Failed login attempt from %s", request.client.host if request.client else "unknown"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password.",

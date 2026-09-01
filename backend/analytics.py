@@ -22,14 +22,14 @@ an error, so failures are logged and swallowed. That is a deliberate exception
 to the project's usual rule against swallowing errors: the alternative is losing
 a user's answer to a bookkeeping problem.
 """
+
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from cache import question_hash  # noqa: E402
-
+from cache import question_hash
 from db import query_logs_col
 
 logger = logging.getLogger(__name__)
@@ -58,20 +58,22 @@ def log_query(
     """
     try:
         scores = [p.get("score", 0.0) for p in passages]
-        query_logs_col.insert_one({
-            "created_at": datetime.now(timezone.utc),
-            "session_id": session_id,
-            "question_raw": question[:MAX_QUESTION_LENGTH],
-            "question_condensed": condensed_question[:MAX_QUESTION_LENGTH],
-            # Groups repeats of the same question regardless of casing/spacing.
-            "question_hash": question_hash(condensed_question),
-            "best_score": max(scores) if scores else None,
-            "mean_score": (sum(scores) / len(scores)) if scores else None,
-            "passage_count": len(passages),
-            "refused": refused,
-            "sources": sources,
-            "cache_hit": cache_hit,
-            "latency_ms": latency_ms,
-        })
+        query_logs_col.insert_one(
+            {
+                "created_at": datetime.now(UTC),
+                "session_id": session_id,
+                "question_raw": question[:MAX_QUESTION_LENGTH],
+                "question_condensed": condensed_question[:MAX_QUESTION_LENGTH],
+                # Groups repeats of the same question regardless of casing/spacing.
+                "question_hash": question_hash(condensed_question),
+                "best_score": max(scores) if scores else None,
+                "mean_score": (sum(scores) / len(scores)) if scores else None,
+                "passage_count": len(passages),
+                "refused": refused,
+                "sources": sources,
+                "cache_hit": cache_hit,
+                "latency_ms": latency_ms,
+            }
+        )
     except Exception:
         logger.exception("Failed to write query log for session %s", session_id)

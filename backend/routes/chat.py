@@ -18,27 +18,30 @@ client sends a question and a session id and nothing else. This is both the
 security fix and the smaller design: less payload, less code, one source of
 truth for what was actually said.
 """
+
 import json
 import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
-from cache import (  # noqa: E402
+from analytics import log_query
+from cache import (
     get_cached_answer,
     get_corpus_version,
     is_cacheable_turn,
     put_cached_answer,
 )
-from config import HISTORY_TURNS, REFUSAL_MESSAGE  # noqa: E402
-from llm import get_provider  # noqa: E402
-from rag_chain import (  # noqa: E402
+from config import HISTORY_TURNS, REFUSAL_MESSAGE
+from db import conversations_col
+from llm import get_provider
+from rag_chain import (
     build_messages,
     cited_sources,
     condense_question,
@@ -47,9 +50,6 @@ from rag_chain import (  # noqa: E402
     is_grounded,
     retrieve_passages,
 )
-
-from analytics import log_query
-from db import conversations_col
 from routes.deps import require_auth
 
 logger = logging.getLogger(__name__)
@@ -95,16 +95,24 @@ def load_history(session_id: str | None) -> list[dict]:
         role = message.get("role")
         if role not in ("user", "assistant"):
             continue
-        history.append({
-            "role": role,
-            "content": message.get("content", ""),
-            "sources": message.get("sources", []) or [],
-        })
+        history.append(
+            {
+                "role": role,
+                "content": message.get("content", ""),
+                "sources": message.get("sources", []) or [],
+            }
+        )
     return history
 
 
-def _persist(session_id: str | None, question: str, answer: str,
-             sources: list[str], confidence: int | None, refused: bool) -> None:
+def _persist(
+    session_id: str | None,
+    question: str,
+    answer: str,
+    sources: list[str],
+    confidence: int | None,
+    refused: bool,
+) -> None:
     """Append one exchange to the conversation record.
 
     Sources and confidence are stored with the assistant message so that
@@ -130,7 +138,7 @@ def _persist(session_id: str | None, question: str, answer: str,
                     ]
                 }
             },
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": datetime.now(UTC)},
         },
         upsert=True,
     )
@@ -184,6 +192,7 @@ def _answer(question: str, history: list[dict]) -> dict:
 
 # ── Non-streaming ─────────────────────────────────────────────────────────────
 
+
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_auth)])
 def chat(body: ChatRequest):
     """Non-streaming variant. Kept for testing and as a fallback; the UI uses
@@ -196,12 +205,21 @@ def chat(body: ChatRequest):
         logger.exception("Generation failed for session %s", body.session_id)
         return ChatResponse(
             answer="Sorry, I encountered an error generating a response.",
-            sources=[], confidence=None, follow_ups=[], refused=False,
+            sources=[],
+            confidence=None,
+            follow_ups=[],
+            refused=False,
             session_id=body.session_id,
         )
 
-    _persist(body.session_id, body.question, result["answer"],
-             result["sources"], result["confidence"], result["refused"])
+    _persist(
+        body.session_id,
+        body.question,
+        result["answer"],
+        result["sources"],
+        result["confidence"],
+        result["refused"],
+    )
 
     log_query(
         session_id=body.session_id,
@@ -226,6 +244,7 @@ def chat(body: ChatRequest):
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
 
+
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
@@ -236,8 +255,9 @@ def _sse(payload: dict) -> str:
 CACHED_REPLAY_CHUNKS = 8
 
 
-def _finalize(body: ChatRequest, state: dict, corpus_version: str,
-              history: list[dict], started: float) -> None:
+def _finalize(
+    body: ChatRequest, state: dict, corpus_version: str, history: list[dict], started: float
+) -> None:
     """Persist, cache, and log one exchange. Runs exactly once.
 
     This is called from a `finally` block rather than after the last yield, and
@@ -271,17 +291,27 @@ def _finalize(body: ChatRequest, state: dict, corpus_version: str,
     if not state["answer"]:
         return
 
-    _persist(body.session_id, body.question, state["answer"], state["sources"],
-             state["confidence"], state["refused"])
+    _persist(
+        body.session_id,
+        body.question,
+        state["answer"],
+        state["sources"],
+        state["confidence"],
+        state["refused"],
+    )
 
     if state["complete"] and state["cache_hit"] is None and is_cacheable_turn(history):
-        put_cached_answer(body.question, corpus_version, {
-            "answer": state["answer"],
-            "sources": state["sources"],
-            "confidence": state["confidence"],
-            "follow_ups": state["follow_ups"],
-            "refused": state["refused"],
-        })
+        put_cached_answer(
+            body.question,
+            corpus_version,
+            {
+                "answer": state["answer"],
+                "sources": state["sources"],
+                "confidence": state["confidence"],
+                "follow_ups": state["follow_ups"],
+                "refused": state["refused"],
+            },
+        )
 
     log_query(
         session_id=body.session_id,
@@ -311,9 +341,16 @@ def _stream(body: ChatRequest):
     corpus_version = get_corpus_version()
 
     state = {
-        "answer": "", "sources": [], "confidence": None, "refused": False,
-        "follow_ups": [], "passages": [], "cache_hit": None,
-        "condensed": body.question, "finalized": False, "complete": False,
+        "answer": "",
+        "sources": [],
+        "confidence": None,
+        "refused": False,
+        "follow_ups": [],
+        "passages": [],
+        "cache_hit": None,
+        "condensed": body.question,
+        "finalized": False,
+        "complete": False,
     }
 
     try:
@@ -322,17 +359,26 @@ def _stream(body: ChatRequest):
             cached = get_cached_answer(body.question, corpus_version)
             if cached is not None:
                 state.update(
-                    answer=cached["answer"], sources=cached["sources"],
-                    confidence=cached["confidence"], refused=cached["refused"],
-                    follow_ups=cached["follow_ups"], cache_hit="answer",
+                    answer=cached["answer"],
+                    sources=cached["sources"],
+                    confidence=cached["confidence"],
+                    refused=cached["refused"],
+                    follow_ups=cached["follow_ups"],
+                    cache_hit="answer",
                 )
                 text = cached["answer"]
                 size = max(1, len(text) // CACHED_REPLAY_CHUNKS)
                 for offset in range(0, len(text), size):
-                    yield _sse({"chunk": text[offset:offset + size]})
-                yield _sse({"done": True, "sources": cached["sources"],
-                            "confidence": cached["confidence"],
-                            "refused": cached["refused"], "cached": True})
+                    yield _sse({"chunk": text[offset : offset + size]})
+                yield _sse(
+                    {
+                        "done": True,
+                        "sources": cached["sources"],
+                        "confidence": cached["confidence"],
+                        "refused": cached["refused"],
+                        "cached": True,
+                    }
+                )
                 if cached["follow_ups"]:
                     yield _sse({"follow_ups": cached["follow_ups"]})
                 return
@@ -352,8 +398,9 @@ def _stream(body: ChatRequest):
             )
             state.update(answer=REFUSAL_MESSAGE, refused=True, complete=True)
             yield _sse({"chunk": REFUSAL_MESSAGE})
-            yield _sse({"done": True, "sources": [],
-                        "confidence": state["confidence"], "refused": True})
+            yield _sse(
+                {"done": True, "sources": [], "confidence": state["confidence"], "refused": True}
+            )
             return
 
         state["sources"] = cited_sources(passages)
@@ -375,8 +422,14 @@ def _stream(body: ChatRequest):
 
         # Sources and confidence are already known — send them the moment the
         # answer finishes rather than waiting on the follow-up call.
-        yield _sse({"done": True, "sources": state["sources"],
-                    "confidence": state["confidence"], "refused": False})
+        yield _sse(
+            {
+                "done": True,
+                "sources": state["sources"],
+                "confidence": state["confidence"],
+                "refused": False,
+            }
+        )
 
         # Follow-ups need a second model call, so they arrive as their own event.
         state["follow_ups"] = generate_follow_ups(body.question, state["answer"])

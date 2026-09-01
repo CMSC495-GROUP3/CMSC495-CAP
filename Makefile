@@ -16,7 +16,7 @@ FAKE_SCORE := $(if $(REFUSE),0.50,0.78)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup stub web test cov lint build check compose loadtest clean
+.PHONY: help setup stub web test cov lint lint-py lint-web fmt audit build check compose loadtest clean
 
 help: ## Show this list
 	@grep -E '^[a-z][a-z-]*:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -40,13 +40,26 @@ test: ## Run the backend test suite (~1 second, nothing external)
 cov: ## Tests with a coverage report; CI fails under 80%
 	$(PY) -m pytest --cov=backend --cov=src --cov-report=term-missing
 
-lint: ## ESLint and TypeScript on the frontend
+lint: lint-py lint-web ## Ruff on Python; ESLint and TypeScript on the frontend
+
+lint-py: ## Ruff lint and format check (make fmt fixes what it can)
+	$(VENV)/bin/ruff check .
+	$(VENV)/bin/ruff format --check .
+
+lint-web: ## ESLint and TypeScript on the frontend
 	cd $(FRONT) && npm run -s lint && npx tsc -b
+
+fmt: ## Fix lint findings and format the Python code
+	$(VENV)/bin/ruff check --fix .
+	$(VENV)/bin/ruff format .
+
+audit: ## Known vulnerabilities in the Python and npm dependency trees
+	./scripts/audit.sh
 
 build: ## Production build of the frontend
 	cd $(FRONT) && npm run -s build
 
-check: test lint build ## Everything CI runs
+check: test lint build ## What the CI workflow runs on every PR (audit runs in Security)
 
 compose: ## Full stack in Docker against the real services in .env
 	docker compose up --build
@@ -55,5 +68,5 @@ loadtest: ## Throughput measurement against `make stub`; see scripts/loadtest/RE
 	$(PY) scripts/loadtest/run.py --concurrency 10 20 40 80
 
 clean: ## Remove build and test artifacts
-	rm -rf .coverage .pytest_cache $(FRONT)/dist
+	rm -rf .coverage coverage.xml junit.xml htmlcov .pytest_cache .ruff_cache $(FRONT)/dist
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

@@ -1,11 +1,12 @@
 """Project CRUD endpoints."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from db import projects_col, conversations_col
+from db import conversations_col, projects_col
 from routes.deps import require_auth
 
 router = APIRouter()
@@ -26,7 +27,7 @@ def create_project(body: CreateProjectRequest):
     doc = {
         "project_id": str(uuid.uuid4()),
         "name": body.name,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     projects_col.insert_one(doc)
     doc.pop("_id", None)

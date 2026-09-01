@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in the app, the API, or the tooling does not behave as documented.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a wrong, missing, or unhelpful *answer* from the assistant, use the
+        "Answer quality" template instead. That one feeds the evaluation set.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw. Paste the exact error text if there was one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. make stub
+        2. make web, log in with `dev`
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How were you running it
+      options:
+        - make stub + make web (fake model, in-memory database)
+        - Dev mode against the real services (.env filled in)
+        - make compose (Docker)
+        - Deployed instance
+        - Tests or CI only
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or branch
+      placeholder: "`git rev-parse --short HEAD`, or the PR number"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Backend stdout, browser console, or CI output. Remove anything that looks like a key, a hash, or a real policy document.
+      render: text

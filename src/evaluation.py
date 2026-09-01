@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 ALLOWED_CATEGORIES = {
     "answerable",
@@ -44,9 +44,7 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
 
         missing = REQUIRED_FIELDS - case.keys()
         if missing:
-            raise ValueError(
-                f"Evaluation case {index} is missing: {', '.join(sorted(missing))}"
-            )
+            raise ValueError(f"Evaluation case {index} is missing: {', '.join(sorted(missing))}")
 
         case_id = case["id"]
         if not isinstance(case_id, str) or not case_id.strip():
@@ -62,13 +60,10 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
         if not isinstance(case["question"], str) or not case["question"].strip():
             raise ValueError(f"Evaluation case {case_id} has an empty question")
         if not isinstance(case["expected_sources"], list) or not all(
-            isinstance(source, str) and source.strip()
-            for source in case["expected_sources"]
+            isinstance(source, str) and source.strip() for source in case["expected_sources"]
         ):
             raise ValueError(f"Evaluation case {case_id} has invalid expected sources")
-        if not isinstance(case["expected_behavior"], str) or not case[
-            "expected_behavior"
-        ].strip():
+        if not isinstance(case["expected_behavior"], str) or not case["expected_behavior"].strip():
             raise ValueError(f"Evaluation case {case_id} has empty expected behavior")
 
     return cases
@@ -109,9 +104,7 @@ def score_results(
         actual = set(result_by_id[case["id"]].get(result_field, []))
         return bool(expected & actual)
 
-    citation_matches = [
-        source_match(case, "cited_sources") for case in answer_cases
-    ]
+    citation_matches = [source_match(case, "cited_sources") for case in answer_cases]
 
     return {
         "evaluated_cases": len(cases),
@@ -120,19 +113,18 @@ def score_results(
         ),
         "citation_correctness": _percentage(citation_matches),
         "grounded_answer_rate": _percentage(
-            not result_by_id[case["id"]].get("refused", False)
-            and citation_matches[index]
+            not result_by_id[case["id"]].get("refused", False) and citation_matches[index]
             for index, case in enumerate(answer_cases)
         ),
         "refusal_handling": _percentage(
-            result_by_id[case["id"]].get("refused", False)
-            for case in refusal_cases
+            result_by_id[case["id"]].get("refused", False) for case in refusal_cases
         ),
     }
 
 
 def run_live_case(case: dict[str, Any]) -> dict[str, Any]:
     """Execute one case through the configured retrieval and answer pipeline."""
+    from llm import get_provider
     from rag_chain import (
         build_messages,
         cited_sources,
@@ -140,7 +132,6 @@ def run_live_case(case: dict[str, Any]) -> dict[str, Any]:
         is_grounded,
         retrieve_passages,
     )
-    from llm import get_provider
 
     passages = retrieve_passages(case["question"], k=5)
     retrieved_sources = cited_sources(passages)

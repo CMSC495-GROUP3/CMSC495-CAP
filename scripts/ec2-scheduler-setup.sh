@@ -117,20 +117,22 @@ sleep 10
 
 ROLE_ARN=$(aws iam get-role --role-name "$LAMBDA_ROLE_NAME" --query Role.Arn --output text)
 
-aws lambda create-function \
+if aws lambda create-function \
   --function-name "$LAMBDA_FUNCTION_NAME" \
   --runtime python3.12 \
   --role "$ROLE_ARN" \
   --handler lambda_function.handler \
   --zip-file fileb:///tmp/lambda.zip \
   --environment "Variables={INSTANCE_ID=$INSTANCE_ID}" \
-  --region "$REGION" 2>/dev/null && echo "  Lambda created." || {
-    echo "  Lambda exists, updating code..."
-    aws lambda update-function-code \
-      --function-name "$LAMBDA_FUNCTION_NAME" \
-      --zip-file fileb:///tmp/lambda.zip \
-      --region "$REGION" > /dev/null
-}
+  --region "$REGION" 2>/dev/null; then
+  echo "  Lambda created."
+else
+  echo "  Lambda exists, updating code..."
+  aws lambda update-function-code \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --zip-file fileb:///tmp/lambda.zip \
+    --region "$REGION" > /dev/null
+fi
 
 LAMBDA_ARN=$(aws lambda get-function \
   --function-name "$LAMBDA_FUNCTION_NAME" \

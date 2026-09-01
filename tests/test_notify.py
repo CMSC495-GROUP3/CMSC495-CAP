@@ -1,17 +1,26 @@
 """Webhook delivery: best effort, never raising."""
+
 import json
 import urllib.error
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import notify
 from notify import deliver_escalation, format_summary
 
 RECORD = {
-    "escalation_id": "abcdef0123456789", "status": "open", "reason": "refused",
-    "contact": "People Operations", "session_id": "s", "message_index": 1,
-    "question": "Can I bring my dog?", "answer_excerpt": "I don't have a policy...",
-    "refused": True, "confidence": 30, "sources": [], "note": "Assistance animal.",
-    "created_at": datetime(2026, 8, 30, tzinfo=timezone.utc),
+    "escalation_id": "abcdef0123456789",
+    "status": "open",
+    "reason": "refused",
+    "contact": "People Operations",
+    "session_id": "s",
+    "message_index": 1,
+    "question": "Can I bring my dog?",
+    "answer_excerpt": "I don't have a policy...",
+    "refused": True,
+    "confidence": 30,
+    "sources": [],
+    "note": "Assistance animal.",
+    "created_at": datetime(2026, 8, 30, tzinfo=UTC),
 }
 
 
@@ -37,8 +46,14 @@ def test_summary_for_a_refusal():
 
 
 def test_summary_for_an_unhelpful_answer_quotes_it_and_its_sources():
-    record = {**RECORD, "refused": False, "reason": "unhelpful", "note": None,
-              "answer_excerpt": "x" * 400, "sources": ["Doc A", "Doc B"]}
+    record = {
+        **RECORD,
+        "refused": False,
+        "reason": "unhelpful",
+        "note": None,
+        "answer_excerpt": "x" * 400,
+        "sources": ["Doc A", "Doc B"],
+    }
     lines = format_summary(record).splitlines()
     assert lines[1] == "Answer did not help."
     assert lines[3] == "Assistant said: " + "x" * 300
@@ -47,7 +62,11 @@ def test_summary_for_an_unhelpful_answer_quotes_it_and_its_sources():
 
 def test_no_url_means_no_delivery(monkeypatch):
     monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
-    monkeypatch.setattr(notify.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
+    monkeypatch.setattr(
+        notify.urllib.request,
+        "urlopen",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")),
+    )
     assert deliver_escalation(RECORD) is False
 
 

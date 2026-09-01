@@ -349,7 +349,7 @@ start the API separately with `uvicorn main:app --reload` from `backend/`.
 
 ```bash
 python -m pytest                                   # ~1 second
-python -m pytest --cov=backend --cov=src           # coverage, 84% at last count
+python -m pytest --cov=backend --cov=src           # coverage, 87% at last count
 ```
 
 The suite runs the real application with its external services replaced, the
@@ -358,6 +358,11 @@ same way the load-test server does: MongoDB is an in-memory fake from
 delay set to zero, and vector search returns whatever a test hands it. Nothing
 in `src/` or `backend/` has a test-only branch. No database, API key, or `.env`
 is needed, which is also why CI (`.github/workflows/ci.yml`) needs no secrets.
+CI runs the suite on Python 3.11, 3.12, and 3.13, lints and format-checks the
+Python with ruff, lints and builds the frontend, builds both Docker images, and
+lints the shell scripts, Dockerfiles, and workflows. A separate Security
+workflow runs CodeQL, dependency audits, and a secret scan. CONTRIBUTING has
+the full table.
 
 What is covered: the grounding gate and its best-not-mean rule, server-side
 history filtering, the SSE protocol, first-turn caching and its invalidation,
