@@ -5,6 +5,10 @@ it is. This page is the practical side: getting it running, checking a change,
 and getting that change merged. If something here is wrong or missing, fix it in
 the same PR as the change that made it wrong.
 
+`.agents/skills/CMSC495-CAP/SKILL.md` is the condensed version of this page
+for coding agents: stack, layout, commands, conventions, and the rules that
+are easy to break. Keep the two in step.
+
 ## Ten minutes to a running app
 
 No cloud accounts, API keys, or `.env` needed. This runs the real application
