@@ -42,6 +42,9 @@ jobs:
 
   description:
     name: Description is filled in
+    # Dependabot writes its own body without the template; the title check
+    # still applies to it.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Body has the "What and why" section with text under it
