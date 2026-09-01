@@ -29,11 +29,18 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
     activeSessionId.current = sessionId
   }, [sessionId])
 
+  // Leaving a conversation (sessionId becomes null) empties the list during
+  // this render rather than in an effect, so there is no frame showing the old
+  // messages and no cascading re-render. This is React's "adjust state when a
+  // prop changes" pattern; the rendered id is tracked so it runs once per change.
+  const [renderedSessionId, setRenderedSessionId] = useState(sessionId)
+  if (sessionId !== renderedSessionId) {
+    setRenderedSessionId(sessionId)
+    if (!sessionId) setMessages([])
+  }
+
   useEffect(() => {
-    if (!sessionId) {
-      setMessages([])
-      return
-    }
+    if (!sessionId) return
     if (skipNextFetch.current) {
       skipNextFetch.current = false
       return

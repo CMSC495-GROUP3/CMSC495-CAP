@@ -3,6 +3,9 @@
 
 version: 2
 updates:
+  # One entry for all three requirements files. Dependabot's pip scan of "/"
+  # already picks up backend/requirements.txt, so a second entry for /backend
+  # produced duplicate PRs and, worse, one without the bcrypt exception.
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -10,16 +13,6 @@ updates:
       day: monday
     groups:
       python:
-        patterns: ["*"]
-    labels: [dependencies]
-
-  - package-ecosystem: pip
-    directory: /backend
-    schedule:
-      interval: weekly
-      day: monday
-    groups:
-      backend-python:
         patterns: ["*"]
     labels: [dependencies]
     ignore:

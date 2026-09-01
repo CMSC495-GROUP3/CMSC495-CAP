@@ -47,8 +47,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 is what backend/Dockerfile ships; the others catch drift early.
-        python: ["3.11", "3.12", "3.13"]
+        # 3.11 is what backend/Dockerfile ships; the others catch drift early
+        # and let a base-image bump be judged by a real test run.
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

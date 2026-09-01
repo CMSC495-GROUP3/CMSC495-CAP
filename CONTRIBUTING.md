@@ -93,7 +93,7 @@ so they run on fork PRs too.
 | Workflow | Job | What fails it |
 |---|---|---|
 | CI | Python lint and format | a `ruff check` finding or an unformatted file |
-| CI | Backend tests (3.11, 3.12, 3.13) | a failing test, or coverage under 80% on any version |
+| CI | Backend tests (3.11 through 3.14) | a failing test, or coverage under 80% on any version |
 | CI | Evaluation dataset | `evaluation/questions.json` that `load_cases` rejects |
 | CI | Frontend lint, types, build | ESLint, `tsc -b`, or `vite build` |
 | CI | Docker images and Compose | either image failing to build, the backend image failing to import `main`, or an invalid `docker-compose.yml` |
