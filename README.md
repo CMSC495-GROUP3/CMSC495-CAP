@@ -358,7 +358,7 @@ same way the load-test server does: MongoDB is an in-memory fake from
 delay set to zero, and vector search returns whatever a test hands it. Nothing
 in `src/` or `backend/` has a test-only branch. No database, API key, or `.env`
 is needed, which is also why CI (`.github/workflows/ci.yml`) needs no secrets.
-CI runs the suite on Python 3.11, 3.12, and 3.13, lints and format-checks the
+CI runs the suite on Python 3.11 through 3.14, lints and format-checks the
 Python with ruff, lints and builds the frontend, builds both Docker images, and
 lints the shell scripts, Dockerfiles, and workflows. A separate Security
 workflow runs CodeQL, dependency audits, and a secret scan. CONTRIBUTING has
