@@ -21,7 +21,8 @@ from policy_assistant.rag.config import S3_DOCUMENT_PREFIX
 
 load_dotenv()
 
-SAMPLE_DIR = Path(__file__).resolve().parent.parent / "data" / "sample-policies"
+# parents[2] is the repository root: rag/ -> policy_assistant/ -> root.
+SAMPLE_DIR = Path(__file__).resolve().parents[2] / "data" / "sample-policies"
 
 s3 = boto3.client(
     "s3",

@@ -2,6 +2,7 @@
 
 import importlib
 import sys
+from pathlib import Path
 
 import boto3
 import pytest
@@ -43,6 +44,38 @@ def _load_ingestion(monkeypatch, s3):
     monkeypatch.setattr(boto3, "client", lambda *_args, **_kwargs: s3)
     sys.modules.pop("policy_assistant.rag.embed_documents", None)
     return importlib.import_module("policy_assistant.rag.embed_documents")
+
+
+class _UploadOnlyS3:
+    """Records put_object calls; the seeding script needs nothing else."""
+
+    def __init__(self):
+        self.uploads: list[tuple[str, str]] = []
+
+    def put_object(self, *, Bucket: str, Key: str, Body: bytes, ContentType: str):
+        self.uploads.append((Bucket, Key))
+
+
+def test_seeding_uploads_the_sample_corpus_from_the_repository_root(monkeypatch):
+    """The default source directory is resolved relative to this module's
+    location, which the package move once broke. Guard the real path."""
+    s3 = _UploadOnlyS3()
+    monkeypatch.setattr(boto3, "client", lambda *_args, **_kwargs: s3)
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+    sys.modules.pop("policy_assistant.rag.seed_documents", None)
+    seeding = importlib.import_module("policy_assistant.rag.seed_documents")
+
+    sample_dir = Path(__file__).resolve().parent.parent / "data" / "sample-policies"
+    expected = sorted(p.name for p in sample_dir.iterdir() if p.is_file())
+    assert sample_dir == seeding.SAMPLE_DIR
+    assert len(expected) > 0
+
+    seeding.upload_documents()
+
+    assert [bucket for bucket, _ in s3.uploads] == ["test-bucket"] * len(expected)
+    assert [key for _, key in s3.uploads] == [
+        f"{seeding.S3_DOCUMENT_PREFIX}{name}" for name in expected
+    ]
 
 
 def test_fetches_all_s3_pages_and_skips_directory_placeholders(monkeypatch):

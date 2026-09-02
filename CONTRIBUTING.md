@@ -154,7 +154,7 @@ keep it obviously partial rather than pretending to be complete.
 | retrieval or the grounding gate | `policy_assistant/rag/rag_chain.py` |
 | which model or vendor is used | `policy_assistant/rag/llm.py` only. Add a subclass, register it in `_PROVIDERS`, set `LLM_PROVIDER` |
 | how a source format is parsed | `policy_assistant/rag/documents.py` |
-| an API endpoint | `policy_assistant/api/routes/`; one file per area, mounted in `api/main.py` |
+| an API endpoint | `policy_assistant/api/routes/`; one file per area, mounted in `policy_assistant/api/main.py` |
 | a MongoDB collection or index | `policy_assistant/api/db.py` |
 | the chat UI | `web/src/components/Chat/`, state in `web/src/hooks/useChat.ts` |
 | the product name or the escalation contact | both `policy_assistant/rag/config.py` and `web/src/config.ts`; they are mirrored, change both |
@@ -227,7 +227,7 @@ covers `.env`; the rest is on you.
 - Query analytics are in the `query_logs` collection: refused questions grouped
   by `question_hash` are the content gaps, and `best_score` on answered versus
   refused rows is what the threshold should be tuned against.
-- Backend logs go to stdout. In Compose: `docker compose logs -f backend`.
+- API logs go to stdout. In Compose: `docker compose logs -f api`.
 
 ## Load testing and deployment
 

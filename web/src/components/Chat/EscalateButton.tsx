@@ -31,7 +31,7 @@ type Phase = 'idle' | 'composing' | 'sending' | 'error'
 
 /** Characters of the id shown to the employee, enough to quote back to HR. */
 const REFERENCE_LENGTH = 8
-/** Mirrors ESCALATION_NOTE_MAX_LENGTH in src/config.py; the server enforces the real limit. */
+/** Mirrors ESCALATION_NOTE_MAX_LENGTH in policy_assistant/rag/config.py; the server enforces the real limit. */
 const NOTE_MAX_LENGTH = 2000
 
 function explain(error: unknown): string {

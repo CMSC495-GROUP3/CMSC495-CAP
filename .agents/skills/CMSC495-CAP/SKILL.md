@@ -21,7 +21,7 @@ Fix this file in the same PR.
 |---|---|---|
 | API | FastAPI, uvicorn, slowapi rate limiting, JWT via python-jose, passlib+bcrypt | `policy_assistant/api/` |
 | RAG pipeline | OpenAI embeddings and chat, LangChain text splitters, pymongo | `policy_assistant/rag/` |
-| Storage | MongoDB Atlas (passages, conversations, escalations, caches, query logs), S3 for raw documents | `rag/mongo.py`, `api/db.py` |
+| Storage | MongoDB Atlas (passages, conversations, escalations, caches, query logs), S3 for raw documents | `policy_assistant/rag/mongo.py`, `policy_assistant/api/db.py` |
 | Web app | React 19, TypeScript (strict, no unused locals), Vite, Tailwind 4, react-router, axios | `web/` |
 | Serving | Docker Compose, Nginx in front of the API, EC2 | `docker-compose.yml`, `Dockerfile`, `web/nginx.conf`, `scripts/` |
 | Tests | pytest with everything external stubbed; ~100 tests, about a second | `tests/` |
@@ -123,8 +123,8 @@ gitleaks. PR checks enforce the title format and a filled-in description.
   (`tests/conftest.py`, `scripts/loadtest/server.py`) mark late imports with
   `# noqa: E402`. Keep the marker; ruff flags unused ones.
 - Type hints on function signatures. `datetime.UTC`, not `timezone.utc`.
-- New tuning knobs go in `rag/config.py` as `NAME = type(os.getenv("NAME", default))`.
-- Vendor-specific code goes in `rag/llm.py` only. A new provider is a subclass
+- New tuning knobs go in `policy_assistant/rag/config.py` as `NAME = type(os.getenv("NAME", default))`.
+- Vendor-specific code goes in `policy_assistant/rag/llm.py` only. A new provider is a subclass
   registered in `_PROVIDERS` and selected with `LLM_PROVIDER`.
 - No test-only branches in `policy_assistant/`. If something cannot be
   stubbed from `tests/conftest.py`, fix the design, not the test.
@@ -137,8 +137,8 @@ gitleaks. PR checks enforce the title format and a filled-in description.
   (including the React Compiler rules, so no synchronous setState inside an
   effect), and `react-refresh`.
 - Components live under `web/src/components/<Area>/`, hooks in `hooks/`
-  with a `use` prefix, API calls through `api/client.ts`.
-- `web/src/config.ts` mirrors `rag/config.py` for `APP_NAME` and
+  with a `use` prefix, API calls through `web/src/api/client.ts`.
+- `web/src/config.ts` mirrors `policy_assistant/rag/config.py` for `APP_NAME` and
   `ESCALATION_CONTACT`. Change both.
 
 ### Tests
@@ -188,13 +188,13 @@ cost someone time.
 | Change | File |
 |---|---|
 | a tuning knob | `policy_assistant/rag/config.py` |
-| the answer prompt | `rag/rag_chain.py` `ANSWER_SYSTEM_PROMPT`, then `PROMPT_VERSION` |
-| retrieval or the grounding gate | `rag/rag_chain.py` |
-| a model vendor | `rag/llm.py` |
-| how a source format is parsed | `rag/documents.py` |
-| an API endpoint | `api/routes/<area>.py`, mounted in `api/main.py` |
-| a collection or index | `api/db.py` |
-| the chat UI | `web/src/components/Chat/`, state in `hooks/useChat.ts` |
+| the answer prompt | `policy_assistant/rag/rag_chain.py` `ANSWER_SYSTEM_PROMPT`, then `PROMPT_VERSION` |
+| retrieval or the grounding gate | `policy_assistant/rag/rag_chain.py` |
+| a model vendor | `policy_assistant/rag/llm.py` |
+| how a source format is parsed | `policy_assistant/rag/documents.py` |
+| an API endpoint | `policy_assistant/api/routes/<area>.py`, mounted in `policy_assistant/api/main.py` |
+| a collection or index | `policy_assistant/api/db.py` |
+| the chat UI | `web/src/components/Chat/`, state in `web/src/hooks/useChat.ts` |
 | the sample corpus | `data/sample-policies/`, then re-run ingestion |
 | CI behaviour | `.github/workflows/ci.yml`; lint rules in `pyproject.toml` |
 | accepted vulnerability advisories | `scripts/audit.sh` |
