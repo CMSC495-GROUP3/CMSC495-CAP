@@ -396,8 +396,11 @@ IP it never needs to change, so no update client runs on the instance.
 ## Tests
 
 ```bash
-python -m pytest                                   # ~1 second
-python -m pytest --cov=backend --cov=src           # coverage, 87% at last count
+make check                                         # tests, lint, types, and build
+.venv/bin/python -m pytest                         # backend test suite
+.venv/bin/python -m pytest tests/test_ingestion.py # offline ingestion checks
+.venv/bin/python -m pytest tests/test_evaluation.py # evaluation data and metrics
+.venv/bin/python -m pytest --cov=backend --cov=src # coverage report
 ```
 
 The suite runs the real application with its external services replaced, the
@@ -419,9 +422,19 @@ client hanging up mid-stream. That last case found a real bug while the suite
 was being written: a two-word fragment from an abandoned stream was being cached
 as the answer for everyone who asked the same question next.
 
-Not covered: the OpenAI provider and the ingestion scripts, which are thin
-wrappers over network calls, and the React components, which are checked by
-`tsc` and ESLint only.
+`tests/test_ingestion.py` exercises the ingestion workflow without contacting
+real services. It covers S3 pagination, directory placeholder filtering,
+missing configuration, replacement of stale passages, metadata and embedding
+preservation, cache invalidation, and safe repeated ingestion.
+
+`tests/test_evaluation.py` validates the labeled question set and the metric
+calculations used by the AI evaluation harness. See
+[`evaluation/README.md`](evaluation/README.md) for the question categories,
+live evaluation command, metric definitions, and required human review.
+
+Not covered: live calls to AWS, MongoDB Atlas, or OpenAI, and the React
+components, which are checked by `tsc` and ESLint only. Those external
+integrations require separate testing in the configured team environment.
 
 ## Document format
 
