@@ -21,7 +21,7 @@ The live evaluation requires the same `.env`, seeded policy corpus, MongoDB
 Atlas connection, and model provider used by the application.
 
 ```bash
-.venv/bin/python src/evaluation.py
+.venv/bin/python -m policy_assistant.rag.evaluation
 ```
 
 The command prints the summary metrics and writes detailed answers to

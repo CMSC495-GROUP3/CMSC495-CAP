@@ -1,0 +1,9 @@
+# The offline ingestion scripts (python -m policy_assistant.rag.seed_documents
+# and embed_documents), run from your shell. The API image does not need these.
+-r base.txt
+
+# LangChain text splitters — chunk documents into overlapping passages
+langchain-text-splitters
+
+# AWS S3 — raw document storage
+boto3

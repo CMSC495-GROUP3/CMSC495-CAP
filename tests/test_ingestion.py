@@ -5,9 +5,9 @@ import sys
 
 import boto3
 import pytest
-
-from cache import get_corpus_version
 from conftest import FAKE_DB
+
+from policy_assistant.rag.cache import get_corpus_version
 
 
 class _Body:
@@ -41,8 +41,8 @@ class _S3:
 def _load_ingestion(monkeypatch, s3):
     """Import the script only after replacing boto3's network client."""
     monkeypatch.setattr(boto3, "client", lambda *_args, **_kwargs: s3)
-    sys.modules.pop("embed_documents", None)
-    return importlib.import_module("embed_documents")
+    sys.modules.pop("policy_assistant.rag.embed_documents", None)
+    return importlib.import_module("policy_assistant.rag.embed_documents")
 
 
 def test_fetches_all_s3_pages_and_skips_directory_placeholders(monkeypatch):

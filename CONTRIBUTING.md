@@ -59,14 +59,14 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
    "Load the corpus" section has the exact JSON). The driver cannot create a
    search index; this step is manual and it is the one people forget.
    ```bash
-   .venv/bin/python src/seed_documents.py     # documents -> S3
-   .venv/bin/python src/embed_documents.py    # chunk, embed, store
+   .venv/bin/python -m policy_assistant.rag.seed_documents     # documents -> S3
+   .venv/bin/python -m policy_assistant.rag.embed_documents    # chunk, embed, store
    ```
 4. Run it either way:
 
    | | Command | Use when |
    |---|---|---|
-   | Dev mode | `cd backend && ../.venv/bin/uvicorn main:app --reload` plus `make web` | changing code |
+   | Dev mode | `.venv/bin/uvicorn policy_assistant.api.main:app --reload` plus `make web` | changing code |
    | Full stack | `make compose` | checking the Nginx proxy, the Docker build, or what a deploy will run |
 
    In dev mode the API is at http://localhost:8000 and the OpenAPI console at
@@ -77,18 +77,18 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
 ## Checking a change
 
 ```bash
-make test     # backend tests, about a second
+make test     # Python tests, about a second
 make cov      # same, with a per-file coverage report
-make lint     # ruff on Python; ESLint and tsc on the frontend
+make lint     # ruff on Python; ESLint and tsc on the web app
 make fmt      # fix what ruff can fix, then format; run before committing
-make build    # production frontend build
+make build    # production web build
 make check    # test, lint, build; this is what the CI workflow runs
 make audit    # known vulnerabilities in both dependency trees (the Security workflow)
 ```
 
 Python formatting is enforced. `make fmt` before you commit and CI will not
-complain. The rules are in `ruff.toml`; the version of ruff is pinned in
-`requirements-dev.txt` because the formatter's output changes between releases.
+complain. The rules are in `pyproject.toml`; the version of ruff is pinned in
+`requirements/dev.txt` because the formatter's output changes between releases.
 
 ### What CI runs
 
@@ -98,9 +98,9 @@ so they run on fork PRs too.
 | Workflow | Job | What fails it |
 |---|---|---|
 | CI | Python lint and format | a `ruff check` finding or an unformatted file |
-| CI | Backend tests (3.11 through 3.14) | a failing test, or coverage under 80% on any version |
+| CI | Python tests (3.11 through 3.14) | a failing test, or coverage under 80% on any version |
 | CI | Evaluation dataset | `evaluation/questions.json` that `load_cases` rejects |
-| CI | Frontend lint, types, build | ESLint, `tsc -b`, or `vite build` |
+| CI | Web lint, types, build | ESLint, `tsc -b`, or `vite build` |
 | CI | Docker images and Compose | either image failing to build, the backend image failing to import `main`, or an invalid `docker-compose.yml` |
 | CI | Shell, Dockerfile, workflow lint | shellcheck on `scripts/*.sh`, hadolint on both Dockerfiles, actionlint on the workflows, or a `.env`, key, or build output that got committed |
 | Security | CodeQL, dependency advisories, dependency review, leaked secrets | a new finding; the accepted-advisory list is in `scripts/audit.sh` |
@@ -149,21 +149,23 @@ keep it obviously partial rather than pretending to be complete.
 
 | I want to change... | Look in |
 |---|---|
-| a tuning knob (threshold, chunk size, TTLs, thread pool) | `src/config.py`; every value is env-overridable, defaults live here |
+| a tuning knob (threshold, chunk size, TTLs, thread pool) | `policy_assistant/rag/config.py`; every value is env-overridable, defaults live here |
 | the answer prompt | `rag_chain.py` `ANSWER_SYSTEM_PROMPT`, then bump `PROMPT_VERSION` in `config.py` or cached answers keep serving the old prompt |
-| retrieval or the grounding gate | `src/rag_chain.py` |
-| which model or vendor is used | `src/llm.py` only. Add a subclass, register it in `_PROVIDERS`, set `LLM_PROVIDER` |
-| how a source format is parsed | `src/documents.py` |
-| an API endpoint | `backend/routes/`; one file per area, mounted in `backend/main.py` |
-| a MongoDB collection or index | `backend/db.py` |
-| the chat UI | `frontend/src/components/Chat/`, state in `frontend/src/hooks/useChat.ts` |
-| the product name or the escalation contact | both `src/config.py` and `frontend/src/config.ts`; they are mirrored, change both |
+| retrieval or the grounding gate | `policy_assistant/rag/rag_chain.py` |
+| which model or vendor is used | `policy_assistant/rag/llm.py` only. Add a subclass, register it in `_PROVIDERS`, set `LLM_PROVIDER` |
+| how a source format is parsed | `policy_assistant/rag/documents.py` |
+| an API endpoint | `policy_assistant/api/routes/`; one file per area, mounted in `api/main.py` |
+| a MongoDB collection or index | `policy_assistant/api/db.py` |
+| the chat UI | `web/src/components/Chat/`, state in `web/src/hooks/useChat.ts` |
+| the product name or the escalation contact | both `policy_assistant/rag/config.py` and `web/src/config.ts`; they are mirrored, change both |
 | the sample corpus | `data/sample-policies/`, then re-run ingestion |
 
-The backend reaches `src/` by inserting it on `sys.path` at import. That means
-backend modules must be run from `backend/` (or through the stub, tests, or
-Docker, which all handle it). `python backend/main.py` from the repo root will
-not find `config`.
+`policy_assistant` is one package and every import is absolute
+(`from policy_assistant.rag.config import ...`), so run things from the repo
+root as modules: `python -m policy_assistant.rag.embed_documents`,
+`uvicorn policy_assistant.api.main:app`. Running a file by path
+(`python policy_assistant/rag/embed_documents.py`) puts the wrong directory on
+`sys.path` and the package import fails.
 
 ## Getting a change merged
 
@@ -198,13 +200,13 @@ covers `.env`; the rest is on you.
   it without replacing `passlib`.
 - **Do not deploy under gunicorn `--preload`.** `MongoClient` is not fork-safe
   and the collection handles bind at import. `uvicorn --workers N` is fine. The
-  reasoning is in `src/mongo.py`.
+  reasoning is in `policy_assistant/rag/mongo.py`.
 - **`LLM_PROVIDER=fake` refuses to start with `APP_ENV=production`**, on
   purpose. If a deploy fails with that error, the environment is misconfigured,
   not the code.
 - **Connections per process** are `MONGO_MAX_POOL_SIZE` and the cluster limit is
   workers times that. Atlas free tier caps in the low hundreds and fails under
-  load rather than at startup. Redo the arithmetic in `src/mongo.py` before
+  load rather than at startup. Redo the arithmetic in `policy_assistant/rag/mongo.py` before
   raising either number.
 - **Cached answers outlive a prompt fix** unless `PROMPT_VERSION` is bumped. It
   is part of the cache key for exactly this reason.

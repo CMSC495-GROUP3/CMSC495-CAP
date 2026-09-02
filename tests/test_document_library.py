@@ -1,8 +1,9 @@
 """The document library: derived from passages, rebuilt when the corpus changes."""
 
-from cache import get_corpus_version
 from conftest import FAKE_DB
-from routes.documents import _preview
+
+from policy_assistant.api.routes.documents import _preview
+from policy_assistant.rag.cache import get_corpus_version
 
 
 def _seed_passages(*docs: tuple[str, str, str, int]):

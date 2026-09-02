@@ -3,11 +3,10 @@
 
 version: 2
 updates:
-  # One entry for all three requirements files. Dependabot's pip scan of "/"
-  # already picks up backend/requirements.txt, so a second entry for /backend
-  # produced duplicate PRs and, worse, one without the bcrypt exception.
+  # One entry covers every file under requirements/. Separate entries per
+  # file produced duplicate PRs and, worse, one without the bcrypt exception.
   - package-ecosystem: pip
-    directory: /
+    directory: /requirements
     schedule:
       interval: weekly
       day: monday
@@ -16,17 +15,17 @@ updates:
         patterns: ["*"]
     labels: [dependencies]
     ignore:
-      # passlib 1.7.4 breaks on bcrypt 5.x; see backend/requirements.txt.
+      # passlib 1.7.4 breaks on bcrypt 5.x; see requirements/api.txt.
       - dependency-name: bcrypt
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
-    directory: /frontend
+    directory: /web
     schedule:
       interval: weekly
       day: monday
     groups:
-      frontend-minor-and-patch:
+      web-minor-and-patch:
         update-types: [minor, patch]
     labels: [dependencies]
 
@@ -41,7 +40,7 @@ updates:
     labels: [dependencies, ci]
 
   - package-ecosystem: docker
-    directories: [/backend, /frontend]
+    directories: [/, /web]
     schedule:
       interval: weekly
       day: monday

@@ -1,0 +1,11 @@
+# Dependencies every role needs. Not installed on its own; api.txt and
+# ingest.txt include it with -r.
+
+# OpenAI — embeddings and chat completions via policy_assistant/rag/llm.py
+openai
+
+# MongoDB — passages, conversations, projects, caches, query logs
+pymongo
+
+# Environment variable management — loads .env into os.environ
+python-dotenv

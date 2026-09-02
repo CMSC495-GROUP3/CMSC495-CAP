@@ -3,11 +3,11 @@
 from datetime import datetime
 
 import pytest
+from conftest import FAKE_DB, make_passages
 from pymongo.errors import DuplicateKeyError
 
-import routes.escalations as escalations
-from conftest import FAKE_DB, make_passages
-from limiter import limiter
+from policy_assistant.api.limiter import limiter
+from policy_assistant.api.routes import escalations as escalations
 
 
 @pytest.fixture

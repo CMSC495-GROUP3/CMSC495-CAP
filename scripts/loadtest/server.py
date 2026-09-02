@@ -23,7 +23,7 @@ It does **not** measure end-to-end production latency. Stubbed out:
 - **Atlas Vector Search.** Replaced with canned passages. `$vectorSearch` is an
   Atlas-only aggregation stage and cannot run locally at all.
 
-The stubs live in this file rather than behind flags in `src/` so that no
+The stubs live in this file rather than behind flags in `policy_assistant/` so that no
 test-only branch can ever be reached in production.
 
 ## Reading the gate
@@ -38,14 +38,7 @@ Real traffic sits between the two, weighted by the actual refusal rate.
 """
 
 import os
-import sys
 import time
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_ROOT / "backend"))
-sys.path.insert(0, str(_ROOT / "src"))
 
 # Must be set before importing main, which validates them at import.
 os.environ.setdefault("JWT_SECRET_KEY", "loadtest-secret-not-for-real-use")
@@ -117,19 +110,19 @@ def _fake_retrieve(query: str, k: int = 5) -> list[dict]:
 
 # Route every collection through the in-memory fake before importing the app,
 # so db.py's module-level handles bind to fakes rather than to a real cluster.
-import mongo  # noqa: E402
-from fakemongo import FakeDB  # noqa: E402
+from policy_assistant.rag import mongo  # noqa: E402
+from scripts.loadtest.fakemongo import FakeDB  # noqa: E402
 
 _FAKE_DB = FakeDB()
 mongo.get_db = lambda: _FAKE_DB
 mongo.get_collection = lambda name: LatentCollection(_FAKE_DB[name])
 
-import cache  # noqa: E402
+from policy_assistant.rag import cache  # noqa: E402
 
 cache.get_collection = mongo.get_collection
 
-import main  # noqa: E402
-import routes.chat as chat_routes  # noqa: E402
+from policy_assistant.api import main  # noqa: E402
+from policy_assistant.api.routes import chat as chat_routes  # noqa: E402
 
 
 def _startup() -> None:

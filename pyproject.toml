@@ -1,0 +1,42 @@
+# Python tooling configuration. `make lint`, `make fmt`, `make test`, and CI all
+# read this file, so a change here changes what gets merged.
+#
+# The application is not packaged for distribution; `policy_assistant/` is
+# imported from the repository root (pytest adds it to sys.path below, uvicorn
+# and `python -m` run from the root, and the Dockerfile copies it to /app).
+
+[tool.ruff]
+target-version = "py311"   # the lowest version CI tests; the Dockerfile ships newer
+line-length = 100
+extend-exclude = [".venv", "web", "data"]
+src = ["."]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # import order
+    "B",       # bugbear: likely bugs
+    "UP",      # pyupgrade: syntax the target version supports
+    "SIM",     # simplify
+    "RUF",     # ruff's own checks
+]
+ignore = [
+    "E501",  # the formatter wraps code; long strings and comments are allowed
+    "B008",  # FastAPI's Depends() in a default argument is the framework idiom
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["policy_assistant", "scripts"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["policy_assistant"]

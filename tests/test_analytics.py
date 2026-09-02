@@ -1,9 +1,10 @@
 """Query logging: one record per request, never raising."""
 
-import analytics
-from analytics import MAX_QUESTION_LENGTH, log_query
-from cache import question_hash
 from conftest import FAKE_DB, make_passages
+
+from policy_assistant.api import analytics
+from policy_assistant.api.analytics import MAX_QUESTION_LENGTH, log_query
+from policy_assistant.rag.cache import question_hash
 
 
 def _log(**overrides):
