@@ -34,7 +34,6 @@ scenario. The offline provider does not establish live OpenAI quality.
 | --- | --- | --- |
 | Pull Request 20 | Awaiting team review | Reviewer approves or requests corrections |
 | Pull Request 21 | Awaiting team review | Reviewer approves or requests corrections |
-| Independent Manus peer review | In progress | Findings will be triaged when received |
 | Week 3 design terminology | Partially corrected | Editable Word source is required for the remaining repair |
 
 Only a maintainer should merge approved work into the team repository.
@@ -52,8 +51,8 @@ communications. They do not create new commitments.
 | George Struder | AWS and MongoDB administration | EC2, Docker, network access, SSH access, MongoDB, and deployment |
 | Christopher Richardson | AI integration, testing, and documentation | Ingestion tests, AI evaluation, smoke verification, documentation, and later OpenAI activation |
 | Gavin W | Frontend and general development support | Frontend implementation, styling, and available support |
-| RobN | Testing, documentation, and review support | Design review, synthetic employee data support, testing, and pull request review |
-| Troy Shurn | Former proxy server responsibility | No longer enrolled; work returns to the active team |
+| RobN | Testing, documentation, code review, and proxy server support | Design review, synthetic employee data support, testing, code and pull request review, and the former proxy server responsibility |
+| ~~Troy Shurn~~ | ~~Former proxy server responsibility~~ | ~~No longer enrolled; responsibility reassigned to RobN~~ |
 
 ## Deployment readiness
 
@@ -81,11 +80,9 @@ the EC2 administrator; private SSH keys must never be shared.
 
 1. The EC2 application stack must become healthy before deployed testing begins.
 2. Pull Requests 20 and 21 require team review before integration.
-3. Manus findings will be evaluated as independent review evidence, not accepted
-   automatically.
-4. The editable Week 3 design source is required before its remaining terminology
+3. The editable Week 3 design source is required before its remaining terminology
    and section placement can be repaired safely.
-5. Live OpenAI activation remains last so infrastructure problems cannot consume
+4. Live OpenAI activation remains last so infrastructure problems cannot consume
    paid model usage.
 
 ## Next actions
@@ -95,11 +92,10 @@ the EC2 administrator; private SSH keys must never be shared.
 3. Run `docker compose up -d --build`.
 4. Inspect `docker compose ps` and the Caddy, frontend, and backend logs.
 5. Confirm HTTPS, login, chat, citation, refusal, and escalation behavior.
-6. Triage any Manus review findings.
-7. Obtain team review for Pull Requests 20 and 21.
-8. Configure the dedicated OpenAI project, project key, and spending controls.
-9. Run the integrated AI evaluation against the approved corpus.
-10. Publish the defect report, retest corrections, and assemble Alpha evidence.
+6. Obtain team review for Pull Requests 20 and 21.
+7. Configure the dedicated OpenAI project, project key, and spending controls.
+8. Run the integrated AI evaluation against the approved corpus.
+9. Publish the defect report, retest corrections, and assemble Alpha evidence.
 
 ## Release gate
 
