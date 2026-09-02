@@ -7,6 +7,10 @@
 An internal assistant that answers employee questions about company policy and
 cites the document each answer came from.
 
+**Pilot:** https://policy-assistant.duckdns.org. Sign in with the shared
+password; ask the team for it. The instance is not hosted around the clock, so
+a connection timeout means it is off, not broken.
+
 **Working on it?** [CONTRIBUTING.md](CONTRIBUTING.md) gets you from clone to a
 running app in ten minutes with no accounts, and covers checks, conventions, and
 the things that bite.
@@ -42,7 +46,7 @@ flowchart LR
     EMBED --> MONGO[("MongoDB Atlas<br/>passages + metadata + vectors")]
 
     USER["Employee"] --> REACT["React + TypeScript"]
-    REACT --> CADDY["Caddy (TLS)"]
+    REACT -->|"https://policy-assistant.duckdns.org"| CADDY["Caddy (TLS)"]
     CADDY --> NGINX["Nginx"]
     NGINX --> API["FastAPI"]
     API --> MONGO
@@ -55,9 +59,9 @@ flowchart LR
     REACT -->|"Ask People Operations"| ESC["Escalation record<br/>+ optional webhook"]
 ```
 
-Docker Compose runs three services. `caddy` is the only one with published
-ports: it terminates TLS with a Let's Encrypt certificate for `SITE_ADDRESS` and
-forwards to `frontend`. `frontend` compiles the React app and serves it through
+Docker Compose runs three services on one EC2 instance. `caddy` is the only one
+with published ports: it terminates TLS with a Let's Encrypt certificate for
+`SITE_ADDRESS` and forwards to `frontend`. `frontend` compiles the React app and serves it through
 Nginx, which also proxies `/api/` and disables buffering so streamed tokens are
 not held back. `backend` runs FastAPI with the RAG pipeline mounted from `src/`.
 OpenAI, MongoDB Atlas, and Amazon S3 are external managed services and are not
@@ -189,7 +193,9 @@ months. Measured against the sample corpus:
 Storage is not the binding constraint at pilot scale; a corpus two orders of
 magnitude larger still fits. The real costs are per-query embedding and
 generation calls, which is the other reason the grounding gate runs before
-generation.
+generation. Hosting adds one EC2 instance; the DNS name is a free DuckDNS
+subdomain and the certificate comes from Let's Encrypt, so neither costs
+anything.
 
 ## Throughput
 
@@ -266,12 +272,13 @@ rather than turning a working answer into an error.
   precision against context preservation, and approximate nearest-neighbour
   search narrows 100 candidates to the best 5.
 
-## Local setup
+## Running against the real services
 
 For development without any cloud accounts, `make setup`, `make stub`, and
 `make web` run the app with a fake model and an in-memory database; see
-[CONTRIBUTING.md](CONTRIBUTING.md). The steps below are for running against the
-real services.
+[CONTRIBUTING.md](CONTRIBUTING.md). The steps below configure a machine, local
+or the EC2 host, to run against OpenAI, Atlas, and S3. Deployment continues in
+the next section.
 
 ### Prerequisites
 
@@ -349,11 +356,12 @@ backend port is not published by Compose; the interactive API docs are at
 For frontend development with hot reload, run `npm run dev` in `frontend/` and
 start the API separately with `uvicorn main:app --reload` from `backend/`.
 
-### 4. Deploy
+## Deployment
 
-The pilot runs on a single EC2 instance behind the free DNS name
-`policy-assistant.duckdns.org`. Caddy fetches the certificate, so the instance
-needs no manual TLS setup.
+The pilot runs on a single EC2 instance at `https://policy-assistant.duckdns.org`.
+DuckDNS provides the name for free and Caddy fetches the certificate, so the
+instance needs no manual TLS setup and the whole stack is the same Compose file
+used locally, plus one variable in `.env`.
 
 1. Give the instance an Elastic IP. A stopped and restarted instance otherwise
    gets a new public address and the DNS record goes stale.
@@ -375,8 +383,15 @@ needs no manual TLS setup.
    why.
 
 Later deploys go through `scripts/deploy.sh`, which pulls, rebuilds without
-cache, and restarts the stack over SSH. Certificates persist in the `caddy_data`
-volume across restarts and deploys.
+cache, and restarts the stack over SSH:
+
+```bash
+EC2_HOST=ubuntu@policy-assistant.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
+```
+
+Certificates persist in the `caddy_data` volume across restarts and deploys.
+The DuckDNS record is edited by hand in the DuckDNS dashboard; with an Elastic
+IP it never needs to change, so no update client runs on the instance.
 
 ## Tests
 
@@ -442,6 +457,7 @@ src/        The RAG pipeline, importable by the backend
   rag_chain.py      retrieval, grounding gate, generation
   embed_documents.py / seed_documents.py   offline ingestion
 frontend/   React, TypeScript, Tailwind, Vite, served by Nginx
+Caddyfile   TLS termination and reverse proxy in front of Nginx
 data/       Sample policy corpus
 scripts/    EC2 deploy helper, dependency audit, and the load-test harness
 tests/      pytest suite; conftest.py stubs every external service
@@ -478,6 +494,9 @@ Written specifically for this project: the grounding gate and refusal path, the
   each worker imports the app after forking. See `src/mongo.py`.
 - **Ingestion replaces the whole corpus** on each run rather than diffing. Cheap
   and predictable at this size, wasteful at scale.
+- **Hosting is one instance with no redundancy**, on a free DuckDNS subdomain.
+  A real deployment would sit on a company domain behind a load balancer; the
+  Compose file would move unchanged, and only `SITE_ADDRESS` would differ.
 - **The sample corpus is fictional.** "Meridian Systems" is invented, and the
   policies are written to be realistic, not to be legally accurate.
 
