@@ -463,17 +463,6 @@ scripts/    EC2 deploy helper, dependency audit, and the load-test harness
 tests/      pytest suite; conftest.py stubs every external service
 ```
 
-## Provenance
-
-The application skeleton — streaming SSE chat, JWT auth, conversation
-persistence, the corpus browser, and the Compose/Nginx topology — was ported
-from a prior personal RAG project by one of the team members and adapted to this
-problem. Ported code is MIT-licensed and reused with permission.
-
-Written specifically for this project: the grounding gate and refusal path, the
-`LLMProvider` abstraction, the metadata-carrying document pipeline
-(`src/documents.py`), the document library API and UI, and the sample corpus.
-
 ## Known limitations
 
 - **Authentication is a single shared password**, not per-employee accounts.
