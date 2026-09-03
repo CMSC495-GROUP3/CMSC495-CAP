@@ -1,12 +1,12 @@
 # Day-to-day commands. `make` with no target prints this list.
 #
-# Everything runs from the repo's own virtualenv (.venv) and frontend/node_modules,
+# Everything runs from the repo's own virtualenv (.venv) and web/node_modules,
 # so nothing here depends on what is installed globally.
 
 VENV    := .venv
 PY      := $(VENV)/bin/python
 PIP     := $(VENV)/bin/pip
-FRONT   := frontend
+WEB     := web
 
 # Password for the offline stub server. Override: make stub DEV_PASSWORD=hunter2
 DEV_PASSWORD ?= dev
@@ -23,8 +23,8 @@ help: ## Show this list
 
 setup: ## One-time: create .venv, install Python and Node dependencies
 	test -d $(VENV) || python3 -m venv $(VENV)
-	$(PIP) install -q -r requirements.txt -r backend/requirements.txt -r requirements-dev.txt
-	cd $(FRONT) && npm install
+	$(PIP) install -q -r requirements/dev.txt
+	cd $(WEB) && npm install
 
 stub: ## Run the API on :8000 with a fake model and in-memory Mongo (no accounts needed)
 	APP_PASSWORD_HASH="$$($(PY) -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('$(DEV_PASSWORD)'))")" \
@@ -32,22 +32,22 @@ stub: ## Run the API on :8000 with a fake model and in-memory Mongo (no accounts
 	$(VENV)/bin/uvicorn scripts.loadtest.server:app --port 8000 --log-level warning
 
 web: ## Run the React app on :5173 with hot reload (proxies /api to :8000)
-	cd $(FRONT) && npx vite --port 5173 --strictPort
+	cd $(WEB) && npx vite --port 5173 --strictPort
 
-test: ## Run the backend test suite (~1 second, nothing external)
+test: ## Run the Python test suite (~1 second, nothing external)
 	$(PY) -m pytest
 
 cov: ## Tests with a coverage report; CI fails under 80%
-	$(PY) -m pytest --cov=backend --cov=src --cov-report=term-missing
+	$(PY) -m pytest --cov --cov-report=term-missing
 
-lint: lint-py lint-web ## Ruff on Python; ESLint and TypeScript on the frontend
+lint: lint-py lint-web ## Ruff on Python; ESLint and TypeScript on the web app
 
 lint-py: ## Ruff lint and format check (make fmt fixes what it can)
 	$(VENV)/bin/ruff check .
 	$(VENV)/bin/ruff format --check .
 
-lint-web: ## ESLint and TypeScript on the frontend
-	cd $(FRONT) && npm run -s lint && npx tsc -b
+lint-web: ## ESLint and TypeScript on the web app
+	cd $(WEB) && npm run -s lint && npx tsc -b
 
 fmt: ## Fix lint findings and format the Python code
 	$(VENV)/bin/ruff check --fix .
@@ -56,8 +56,8 @@ fmt: ## Fix lint findings and format the Python code
 audit: ## Known vulnerabilities in the Python and npm dependency trees
 	./scripts/audit.sh
 
-build: ## Production build of the frontend
-	cd $(FRONT) && npm run -s build
+build: ## Production build of the web app
+	cd $(WEB) && npm run -s build
 
 check: test lint build ## What the CI workflow runs on every PR (audit runs in Security)
 
@@ -68,5 +68,5 @@ loadtest: ## Throughput measurement against `make stub`; see scripts/loadtest/RE
 	$(PY) scripts/loadtest/run.py --concurrency 10 20 40 80
 
 clean: ## Remove build and test artifacts
-	rm -rf .coverage coverage.xml junit.xml htmlcov .pytest_cache .ruff_cache $(FRONT)/dist
+	rm -rf .coverage coverage.xml junit.xml htmlcov .pytest_cache .ruff_cache $(WEB)/dist
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

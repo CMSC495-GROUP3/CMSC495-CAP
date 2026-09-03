@@ -1,11 +1,12 @@
 """The chat routes: grounding gate, history handling, streaming protocol,
 caching, and the bookkeeping that must survive a dropped stream."""
 
-import llm
-from cache import get_cached_answer, get_corpus_version
-from config import HISTORY_TURNS, REFUSAL_MESSAGE
 from conftest import FAKE_DB, make_passages, sse_events
-from routes.chat import ChatRequest, _stream, load_history
+
+from policy_assistant.api.routes.chat import ChatRequest, _stream, load_history
+from policy_assistant.rag import llm
+from policy_assistant.rag.cache import get_cached_answer, get_corpus_version
+from policy_assistant.rag.config import HISTORY_TURNS, REFUSAL_MESSAGE
 
 FAKE_ANSWER = llm.FakeProvider.ANSWER
 

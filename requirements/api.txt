@@ -1,0 +1,14 @@
+# The API service. This is what the Dockerfile installs.
+-r base.txt
+
+# FastAPI — web framework
+fastapi
+uvicorn[standard]
+slowapi
+
+# Auth — JWT tokens + password hashing
+python-jose[cryptography]
+passlib[bcrypt]
+# Pinned: passlib 1.7.4 is incompatible with bcrypt 5.x, which removed the
+# __about__ attribute passlib reads to detect the backend version.
+bcrypt==4.3.0

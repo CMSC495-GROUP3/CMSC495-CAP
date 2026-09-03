@@ -28,8 +28,8 @@ fi
 
 echo "== Python"
 "$pip_audit" \
-  -r requirements.txt -r backend/requirements.txt -r requirements-dev.txt \
+  -r requirements/dev.txt \
   --progress-spinner off "${ignore_flags[@]}"
 
 echo "== npm"
-(cd frontend && npm audit --audit-level=high)
+(cd web && npm audit --audit-level=high)

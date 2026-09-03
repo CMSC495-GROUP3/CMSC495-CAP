@@ -35,20 +35,20 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: requirements-dev.txt
-      - run: pip install -r requirements-dev.txt
-      # Settings live in ruff.toml. `make fmt` fixes everything this reports.
+          cache-dependency-path: requirements/lint.txt
+      - run: pip install -r requirements/lint.txt
+      # Settings live in pyproject.toml. `make fmt` fixes everything this reports.
       - run: ruff check --output-format github .
       - run: ruff format --check --diff .
 
-  backend-tests:
-    name: Backend tests (Python ${{ matrix.python }})
+  python-tests:
+    name: Python tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 is what backend/Dockerfile ships; the others catch drift early
-        # and let a base-image bump be judged by a real test run.
+        # 3.11 is the floor pyproject.toml targets; the others catch drift
+        # early and let a base-image bump be judged by a real test run.
         python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
@@ -56,17 +56,14 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            backend/requirements.txt
-            requirements-dev.txt
-      - run: pip install -r requirements.txt -r backend/requirements.txt -r requirements-dev.txt
+          cache-dependency-path: requirements/*.txt
+      - run: pip install -r requirements/dev.txt
       # Everything external is stubbed by tests/conftest.py: no database, no
       # model provider, no secrets needed.
       - name: Run the suite with coverage
         run: >
           python -m pytest
-          --cov=backend --cov=src
+          --cov
           --cov-report=term --cov-report=xml
           --cov-fail-under=80
           --junitxml=junit.xml -o junit_family=legacy
@@ -78,7 +75,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: backend-test-results-py${{ matrix.python }}
+          name: python-test-results-py${{ matrix.python }}
           path: |
             coverage.xml
             junit.xml
@@ -99,11 +96,9 @@ jobs:
         # The loader has no third-party imports, so nothing is installed here.
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import sys
           from collections import Counter
 
-          sys.path.insert(0, "src")
-          from evaluation import load_cases
+          from policy_assistant.rag.evaluation import load_cases
 
           cases = load_cases("evaluation/questions.json")
           counts = Counter(case["category"] for case in cases)
@@ -116,31 +111,31 @@ jobs:
           PY
           cat "$GITHUB_STEP_SUMMARY"
 
-  frontend:
-    name: Frontend lint, types, build
+  web:
+    name: Web lint, types, build
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: web
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npx tsc -b --pretty false
       - run: npm run build
       - uses: actions/upload-artifact@v7
         with:
-          name: frontend-dist
-          path: frontend/dist
+          name: web-dist
+          path: web/dist
           retention-days: 7
 
   docker:
-    # Both images build without secrets. The backend image is then imported
+    # Both images build without secrets. The API image is then imported
     # once, which catches a missing file or dependency in the image that the
     # test suite (which runs from the source tree) cannot.
     name: Docker images and Compose
@@ -148,26 +143,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Build backend image
+      - name: Build API image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: backend/Dockerfile
+          file: Dockerfile
           push: false
           load: true
-          tags: policy-assistant-backend:ci
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,scope=backend,mode=max
-      - name: Build frontend image
+          tags: policy-assistant-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Build web image
         uses: docker/build-push-action@v7
         with:
-          context: frontend
-          file: frontend/Dockerfile
+          context: web
+          file: web/Dockerfile
           push: false
-          tags: policy-assistant-frontend:ci
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,scope=frontend,mode=max
-      - name: Backend image imports the application
+          tags: policy-assistant-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+      - name: API image imports the application
         # pymongo connects lazily, so importing main needs no database. The
         # values are placeholders; nothing here is a real credential.
         run: >
@@ -177,8 +172,8 @@ jobs:
           -e MONGODB_URI=mongodb://127.0.0.1:1
           -e MONGODB_DB=ci
           -e LLM_PROVIDER=fake
-          policy-assistant-backend:ci
-          python -c "import main; print('backend image imports cleanly')"
+          policy-assistant-api:ci
+          python -c "import policy_assistant.api.main; print('API image imports cleanly')"
       - name: Compose file is valid
         run: |
           cp .env.example .env
@@ -198,14 +193,14 @@ jobs:
           fi
       - name: shellcheck
         run: shellcheck scripts/*.sh
-      - name: hadolint (backend)
+      - name: hadolint (api)
         uses: hadolint/hadolint-action@v3.5.0
         with:
-          dockerfile: backend/Dockerfile
-      - name: hadolint (frontend)
+          dockerfile: Dockerfile
+      - name: hadolint (web)
         uses: hadolint/hadolint-action@v3.5.0
         with:
-          dockerfile: frontend/Dockerfile
+          dockerfile: web/Dockerfile
       - name: actionlint
         run: >
           docker run --rm -v "$PWD:/repo" --workdir /repo
@@ -217,9 +212,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - python-lint
-      - backend-tests
+      - python-tests
       - evaluation-dataset
-      - frontend
+      - web
       - docker
       - repo-checks
     if: always()

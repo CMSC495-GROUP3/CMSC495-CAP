@@ -1,10 +1,10 @@
 """The retrieval side of the pipeline: grounding gate, scoring, prompt assembly."""
 
 import pytest
-
-import rag_chain
 from conftest import make_passages
-from rag_chain import (
+
+from policy_assistant.rag import rag_chain
+from policy_assistant.rag.rag_chain import (
     build_citation_manifest,
     build_context,
     build_messages,

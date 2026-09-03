@@ -1,0 +1,12 @@
+# Everything a contributor needs: both runtime roles plus test and lint tools.
+#   pip install -r requirements/dev.txt
+-r api.txt
+-r ingest.txt
+-r lint.txt
+
+pytest
+pytest-cov
+# FastAPI's TestClient is built on httpx
+httpx
+# Known-vulnerability scan of the Python dependency tree (scripts/audit.sh)
+pip-audit

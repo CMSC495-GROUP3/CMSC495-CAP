@@ -19,24 +19,24 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - frontend
+      - web
     restart: unless-stopped
 
-  frontend:
+  web:
     build:
       # Self-contained context — the build needs nothing from the parent
-      context: frontend
+      context: web
       dockerfile: Dockerfile
     # Not published. Caddy reaches Nginx on port 80 over the Compose network.
     depends_on:
-      - backend
+      - api
     restart: unless-stopped
 
-  backend:
+  api:
     build:
-      # Root context so the image can copy both backend/ and src/
+      # Root context so the image can copy the policy_assistant package
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     env_file:
       - .env
     # Not published. Nginx proxies /api/ to this container on port 8000.

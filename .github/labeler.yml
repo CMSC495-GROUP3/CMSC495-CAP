@@ -1,21 +1,21 @@
 # Path-based labels applied by the "PR checks" workflow on PRs from branches in
 # this repository. Labels that do not exist yet are created on first use.
 
-backend:
+api:
   - changed-files:
-      - any-glob-to-any-file: ["backend/**", "src/**"]
+      - any-glob-to-any-file: ["policy_assistant/**", "Dockerfile"]
 
-frontend:
+web:
   - changed-files:
-      - any-glob-to-any-file: ["frontend/**"]
+      - any-glob-to-any-file: ["web/**"]
 
 tests:
   - changed-files:
-      - any-glob-to-any-file: ["tests/**", "pytest.ini"]
+      - any-glob-to-any-file: ["tests/**", "pyproject.toml"]
 
 evaluation:
   - changed-files:
-      - any-glob-to-any-file: ["evaluation/**", "src/evaluation.py"]
+      - any-glob-to-any-file: ["evaluation/**", "policy_assistant/rag/evaluation.py"]
 
 documentation:
   - changed-files:
@@ -23,7 +23,7 @@ documentation:
 
 ci:
   - changed-files:
-      - any-glob-to-any-file: [".github/**", "Makefile", "ruff.toml", "scripts/audit.sh"]
+      - any-glob-to-any-file: [".github/**", "Makefile", "pyproject.toml", "scripts/audit.sh"]
 
 infra:
   - changed-files:
@@ -37,7 +37,6 @@ infra:
 dependencies:
   - changed-files:
       - any-glob-to-any-file:
-          - "requirements*.txt"
-          - "backend/requirements.txt"
-          - "frontend/package.json"
-          - "frontend/package-lock.json"
+          - "requirements/*.txt"
+          - "web/package.json"
+          - "web/package-lock.json"

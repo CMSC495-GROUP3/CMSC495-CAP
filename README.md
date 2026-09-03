@@ -1,8 +1,8 @@
 # Policy Assistant
 
 > **Working name.** The product name is pending. To rebrand, change `APP_NAME`
-> in `src/config.py` and `frontend/src/config.ts`, and the `<title>` in
-> `frontend/index.html`.
+> in `policy_assistant/rag/config.py` and `web/src/config.ts`, and the `<title>`
+> in `web/index.html`.
 
 An internal assistant that answers employee questions about company policy and
 cites the document each answer came from.
@@ -61,9 +61,9 @@ flowchart LR
 
 Docker Compose runs three services on one EC2 instance. `caddy` is the only one
 with published ports: it terminates TLS with a Let's Encrypt certificate for
-`SITE_ADDRESS` and forwards to `frontend`. `frontend` compiles the React app and serves it through
-Nginx, which also proxies `/api/` and disables buffering so streamed tokens are
-not held back. `backend` runs FastAPI with the RAG pipeline mounted from `src/`.
+`SITE_ADDRESS` and forwards to `web`. `web` compiles the React app and serves it
+through Nginx, which also proxies `/api/` and disables buffering so streamed
+tokens are not held back. `api` runs FastAPI with the RAG pipeline.
 OpenAI, MongoDB Atlas, and Amazon S3 are external managed services and are not
 part of the Compose environment.
 
@@ -101,14 +101,14 @@ it appended _after_ the grounding instructions — defeating the safety property
 below by editing a JSON payload. Forged `sources` on a fabricated assistant turn
 also poisoned the citation manifest.
 
-`load_history()` in `backend/routes/chat.py` replays only `user` and `assistant`
+`load_history()` in `policy_assistant/api/routes/chat.py` replays only `user` and `assistant`
 turns from the stored record, so exactly one system message ever reaches the
 model. The fix is also the smaller design: smaller payloads and less code.
 
 ### Hallucination — refuse rather than guess
 
 Every answer names its sources, and the system declines outright when retrieval
-is too weak to support one. The gate is `is_grounded()` in `src/rag_chain.py`:
+is too weak to support one. The gate is `is_grounded()` in `policy_assistant/rag/rag_chain.py`:
 
 ```python
 return max(p.get("score", 0.0) for p in passages) >= threshold
@@ -145,7 +145,7 @@ escalation: the question, the assistant's reply, the retrieval score, the cited
 documents, and an optional note from the employee.
 
 The request names the message by its position in the stored conversation, and
-`backend/routes/escalations.py` copies the question from the server-side record
+`policy_assistant/api/routes/escalations.py` copies the question from the server-side record
 rather than accepting text from the client. That is the same rule as the
 history handling above, for the same reason: a client that could supply its own
 text could escalate an exchange that never happened. Escalating the same message
@@ -165,7 +165,7 @@ webhook-fed channel.
 
 ### Vendor lock-in — one interface, one env var
 
-Every model call goes through `LLMProvider` in `src/llm.py`. No other module
+Every model call goes through `LLMProvider` in `policy_assistant/rag/llm.py`. No other module
 names a vendor or a model. The interface exposes two logical roles rather than
 model names:
 
@@ -259,12 +259,13 @@ rather than turning a working answer into an error.
 ## Computational problem-solving
 
 - **Decomposition** — ingestion, indexing, retrieval, and generation are
-  separate stages with separate entry points. Ingestion (`src/seed_documents.py`,
-  `src/embed_documents.py`) runs offline and never at query time.
+  separate stages with separate entry points. Ingestion (`seed_documents.py`
+  and `embed_documents.py` in `policy_assistant/rag/`) runs offline and never
+  at query time.
 - **Pattern recognition** — happens in embedding space. "How many vacation days
   do I get" and "what is the PTO accrual rate" are lexically unlike each other
   but land near the same passage.
-- **Abstraction** — `src/documents.py` reduces every source format to one shape,
+- **Abstraction** — `policy_assistant/rag/documents.py` reduces every source format to one shape,
   `{doc_id, title, category, owner, effective_date, body}`, which becomes one
   passage-and-metadata record per chunk. Supporting PDF or Confluence means
   converting to that shape; nothing downstream changes.
@@ -305,7 +306,7 @@ Create a virtual environment and generate the shared password hash:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt -r backend/requirements.txt -r requirements-dev.txt
+pip install -r requirements/dev.txt
 python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('replace-this-password'))"
 ```
 
@@ -319,8 +320,8 @@ rather than `echo`.
 Replace them with real ones and the same commands apply.
 
 ```bash
-python src/seed_documents.py     # upload documents/ to S3
-python src/embed_documents.py    # chunk, embed, store in Atlas
+python -m policy_assistant.rag.seed_documents     # upload data/sample-policies/ to S3
+python -m policy_assistant.rag.embed_documents    # chunk, embed, store in Atlas
 ```
 
 In Atlas, create a Vector Search index named `vector_index` on the `passages`
@@ -341,7 +342,7 @@ collection:
 
 This must be created in the Atlas UI or CLI — a search index is not a regular
 index and the driver cannot create it. All other indexes are created
-automatically at backend startup by `ensure_indexes()` in `backend/db.py`.
+automatically at API startup by `ensure_indexes()` in `policy_assistant/api/db.py`.
 
 ### 3. Run
 
@@ -350,11 +351,12 @@ docker compose up --build
 ```
 
 Open `http://localhost`. Health check at `http://localhost/api/health`. The
-backend port is not published by Compose; the interactive API docs are at
+API port is not published by Compose; the interactive API docs are at
 `http://localhost:8000/docs` when the API runs outside Docker, as below.
 
-For frontend development with hot reload, run `npm run dev` in `frontend/` and
-start the API separately with `uvicorn main:app --reload` from `backend/`.
+For web development with hot reload, run `npm run dev` in `web/` and start the
+API separately from the repo root with
+`uvicorn policy_assistant.api.main:app --reload`.
 
 ## Deployment
 
@@ -401,20 +403,20 @@ IP it never needs to change, so no update client runs on the instance.
 
 ```bash
 make check                                         # tests, lint, types, and build
-.venv/bin/python -m pytest                         # backend test suite
+.venv/bin/python -m pytest                         # Python test suite
 .venv/bin/python -m pytest tests/test_ingestion.py # offline ingestion checks
 .venv/bin/python -m pytest tests/test_evaluation.py # evaluation data and metrics
-.venv/bin/python -m pytest --cov=backend --cov=src # coverage report
+.venv/bin/python -m pytest --cov                   # coverage report
 ```
 
 The suite runs the real application with its external services replaced, the
 same way the load-test server does: MongoDB is an in-memory fake from
 `scripts/loadtest/fakemongo.py`, the model is `LLM_PROVIDER=fake` with every
 delay set to zero, and vector search returns whatever a test hands it. Nothing
-in `src/` or `backend/` has a test-only branch. No database, API key, or `.env`
+in `policy_assistant/` has a test-only branch. No database, API key, or `.env`
 is needed, which is also why CI (`.github/workflows/ci.yml`) needs no secrets.
 CI runs the suite on Python 3.11 through 3.14, lints and format-checks the
-Python with ruff, lints and builds the frontend, builds both Docker images, and
+Python with ruff, lints and builds the web app, builds both Docker images, and
 lints the shell scripts, Dockerfiles, and workflows. A separate Security
 workflow runs CodeQL, dependency audits, and a secret scan. CONTRIBUTING has
 the full table.
@@ -460,24 +462,34 @@ falls back to a readable form of the filename.
 ## Repository layout
 
 ```text
-backend/    FastAPI routes, auth, rate limiting, MongoDB access
-  db.py             collection handles + index creation
-  analytics.py      one query_logs record per request
-  notify.py         best-effort webhook delivery for escalations
-  routes/chat.py    streaming + non-streaming Q&A, enforces the grounding gate
-  routes/documents.py  browse and search the indexed corpus
-  routes/escalations.py  hand a question to a person; open queue; resolve
-src/        The RAG pipeline, importable by the backend
-  config.py         tuning knobs, single source of truth
-  llm.py            LLMProvider interface — the only vendor-aware module
-  documents.py      source-format abstraction
-  rag_chain.py      retrieval, grounding gate, generation
-  embed_documents.py / seed_documents.py   offline ingestion
-frontend/   React, TypeScript, Tailwind, Vite, served by Nginx
-Caddyfile   TLS termination and reverse proxy in front of Nginx
-data/       Sample policy corpus
-scripts/    EC2 deploy helper, dependency audit, and the load-test harness
-tests/      pytest suite; conftest.py stubs every external service
+policy_assistant/   The Python application, one package
+  api/              FastAPI routes, auth, rate limiting, MongoDB access
+    main.py           app factory and lifespan; mounts routes/
+    db.py             collection handles + index creation
+    analytics.py      one query_logs record per request
+    notify.py         best-effort webhook delivery for escalations
+    routes/chat.py    streaming + non-streaming Q&A, enforces the grounding gate
+    routes/documents.py    browse and search the indexed corpus
+    routes/escalations.py  hand a question to a person; open queue; resolve
+  rag/              The RAG pipeline, imported by api/ and run offline for ingestion
+    config.py         tuning knobs, single source of truth
+    llm.py            LLMProvider interface — the only vendor-aware module
+    documents.py      source-format abstraction
+    rag_chain.py      retrieval, grounding gate, generation
+    embed_documents.py / seed_documents.py   offline ingestion
+web/                React, TypeScript, Tailwind, Vite, served by Nginx
+tests/              pytest suite; conftest.py stubs every external service
+scripts/            EC2 deploy helper, dependency audit, and the load-test harness
+evaluation/         labeled question set and how to run it
+data/               Sample policy corpus
+requirements/       base.txt shared; api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)
+pyproject.toml      ruff and pytest settings
+Makefile            setup, stub, web, test, lint, build, compose; `make` lists them
+Dockerfile          the API image; web/ has its own
+docker-compose.yml  caddy, web, api
+Caddyfile           TLS termination and reverse proxy in front of Nginx
+.github/            CI, security, and PR-check workflows, templates, Dependabot, CODEOWNERS
+.agents/            a skill file describing this repo for coding agents
 ```
 
 ## Known limitations
@@ -489,7 +501,7 @@ tests/      pytest suite; conftest.py stubs every external service
 - **Escalations have no handler UI.** The open queue and resolve endpoints
   exist; a page for People Operations to work through them does not.
 - **The React components have no unit tests.** The backend suite is the safety
-  net; the frontend is checked by `tsc` and ESLint.
+  net; the web app is checked by `tsc` and ESLint.
 - **Document search uses `$regex`**, which does not use an index. Fine at this
   corpus size; move to Atlas Search if the library grows large.
 - **JWTs are stored in browser local storage**, which is acceptable for an
@@ -497,7 +509,7 @@ tests/      pytest suite; conftest.py stubs every external service
   security model.
 - **Do not deploy under gunicorn `--preload`.** `MongoClient` is not fork-safe
   and the collection handles bind at import. uvicorn `--workers` is safe because
-  each worker imports the app after forking. See `src/mongo.py`.
+  each worker imports the app after forking. See `policy_assistant/rag/mongo.py`.
 - **Ingestion replaces the whole corpus** on each run rather than diffing. Cheap
   and predictable at this size, wasteful at scale.
 - **Hosting is one instance with no redundancy**, on a free DuckDNS subdomain.

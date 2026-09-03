@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from evaluation import load_cases, score_results
+from policy_assistant.rag.evaluation import load_cases, score_results
 
 DATASET = Path(__file__).resolve().parent.parent / "evaluation" / "questions.json"
 

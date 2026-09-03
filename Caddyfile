@@ -9,6 +9,6 @@
 # Caddy flushes text/event-stream responses as they arrive, so the chat stream
 # needs no extra configuration here.
 {$SITE_ADDRESS} {
-    reverse_proxy frontend:80
+    reverse_proxy web:80
     header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 }

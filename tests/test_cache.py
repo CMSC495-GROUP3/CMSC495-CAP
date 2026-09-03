@@ -1,7 +1,9 @@
 """Answer and embedding caches, and the corpus version that keys them."""
 
-import cache
-from cache import (
+from conftest import FAKE_DB
+
+from policy_assistant.rag import cache
+from policy_assistant.rag.cache import (
     bump_corpus_version,
     embed_cached,
     get_cached_answer,
@@ -11,7 +13,6 @@ from cache import (
     put_cached_answer,
     question_hash,
 )
-from conftest import FAKE_DB
 
 RESULT = {
     "answer": "15 days.",

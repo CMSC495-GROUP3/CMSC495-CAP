@@ -26,7 +26,7 @@ body:
     attributes:
       label: Where it lands
       options:
-        - label: Backend or RAG pipeline (`backend/`, `src/`)
-        - label: Frontend (`frontend/`)
+        - label: API or RAG pipeline (`policy_assistant/`)
+        - label: Web app (`web/`)
         - label: Evaluation set or metrics (`evaluation/`)
         - label: Tooling, CI, or deployment

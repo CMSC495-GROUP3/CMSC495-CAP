@@ -4,8 +4,8 @@ import json
 import urllib.error
 from datetime import UTC, datetime
 
-import notify
-from notify import deliver_escalation, format_summary
+from policy_assistant.api import notify
+from policy_assistant.api.notify import deliver_escalation, format_summary
 
 RECORD = {
     "escalation_id": "abcdef0123456789",
