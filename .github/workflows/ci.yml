@@ -222,8 +222,9 @@ jobs:
       - name: Every job succeeded
         env:
           RESULTS: ${{ toJSON(needs) }}
+        # A job that does not run reports "skipped", which is not a failure
+        # but is not a pass either. Require "success" from every job so a
+        # skipped required job cannot turn this check green.
         run: |
           echo "$RESULTS"
-          if echo "$RESULTS" | grep -Eq '"result": "(failure|cancelled)"'; then
-            exit 1
-          fi
+          jq -e 'all(.[].result; . == "success")' <<< "$RESULTS" > /dev/null
