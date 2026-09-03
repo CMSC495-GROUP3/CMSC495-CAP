@@ -46,7 +46,7 @@ services:
       - .env
     environment:
       # Uvicorn ProxyHeadersMiddleware trust list. Matches Nginx
-      # set_real_ip_from: Docker's default bridge address pool, so only
+      # set_real_ip_from: Docker's default bridge address pools, so only
       # Compose peers (Nginx) can set client identity — never an external
       # caller. Never set this to *.
       FORWARDED_ALLOW_IPS: "172.16.0.0/12,192.168.0.0/16"

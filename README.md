@@ -112,7 +112,7 @@ an explicit trust chain on two Compose networks: Caddy (edge) replaces any
 client-supplied `X-Forwarded-*` with the connecting address; Nginx trusts that
 header only from Docker's default address pools (`172.16.0.0/12` and `192.168.0.0/16`) via `real_ip`,
 then replaces `X-Forwarded-For` with the resolved client before talking to the
-API; Uvicorn trusts the same pool via `FORWARDED_ALLOW_IPS`. Only Caddy
+API; Uvicorn trusts the same pools via `FORWARDED_ALLOW_IPS`. Only Caddy
 publishes host ports; Nginx and the API stay internal. `api` is FastAPI with
 the RAG pipeline. OpenAI, MongoDB Atlas, and Amazon S3 are managed services
 outside Compose. With `SITE_ADDRESS` unset, Caddy serves plain HTTP on
