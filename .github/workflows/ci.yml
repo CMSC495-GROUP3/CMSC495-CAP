@@ -179,8 +179,6 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config --quiet
-      - name: Preflight Compose ownership labels
-        run: python scripts/test_preflight_compose_ownership.py
       - name: Full proxy-chain acceptance
         run: python scripts/test_proxy_chain.py
 

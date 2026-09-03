@@ -1,9 +1,3 @@
-# Stable, deploy-overridable Compose CIDRs (not container IPs). The anchors keep
-# Docker IPAM and both proxy trust lists sourced from the same values. Override
-# these defaults when either range overlaps a host route or Docker network.
-x-edge-subnet: &edge-subnet "${EDGE_SUBNET:-10.250.0.0/24}"
-x-app-subnet: &app-subnet "${APP_SUBNET:-10.251.0.0/24}"
-
 services:
 
   # TLS termination. Caddy obtains and renews a Let's Encrypt certificate for
@@ -38,12 +32,6 @@ services:
     # Nginx reaches the API on port 8000 over the app network.
     depends_on:
       - api
-    environment:
-      # The Nginx image templates only this variable into set_real_ip_from.
-      # The filter prevents envsubst from consuming Nginx variables such as
-      # $remote_addr and $host.
-      EDGE_SUBNET: *edge-subnet
-      NGINX_ENVSUBST_FILTER: "^EDGE_SUBNET$"
     networks:
       - edge
       - app
@@ -57,10 +45,11 @@ services:
     env_file:
       - .env
     environment:
-      # Uvicorn ProxyHeadersMiddleware trust list. Matches networks.app below
-      # so only Nginx (the app-network peer) can set client identity — never
-      # Caddy, and never an external caller. Never set this to *.
-      FORWARDED_ALLOW_IPS: *app-subnet
+      # Uvicorn ProxyHeadersMiddleware trust list. Matches Nginx
+      # set_real_ip_from: Docker's default bridge address pool, so only
+      # Compose peers (Nginx) can set client identity — never an external
+      # caller. Never set this to *.
+      FORWARDED_ALLOW_IPS: "172.16.0.0/12"
     # Not published. Nginx proxies /api/ to this container on port 8000.
     networks:
       - app
@@ -71,13 +60,7 @@ volumes:
   caddy_config:
 
 networks:
-  # Public edge: Caddy ↔ Nginx. Nginx real_ip trusts this CIDR only.
+  # Public edge: Caddy ↔ Nginx. Only Caddy publishes host ports.
   edge:
-    ipam:
-      config:
-        - subnet: *edge-subnet
-  # Private app: Nginx ↔ Uvicorn. Uvicorn trusts this CIDR only.
+  # Private app: Nginx ↔ Uvicorn. API stays off the edge network.
   app:
-    ipam:
-      config:
-        - subnet: *app-subnet

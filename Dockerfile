@@ -17,6 +17,6 @@ EXPOSE 8000
 # --proxy-headers lets uvicorn honour X-Forwarded-* from a trusted peer so the
 # rate limiter and failed-login log see the external client Nginx resolved,
 # not Nginx's own container IP. Trust is NOT "*": uvicorn reads
-# FORWARDED_ALLOW_IPS (Compose sets it to the app network CIDR — Nginx only).
+# FORWARDED_ALLOW_IPS (Compose sets it to Docker's 172.16.0.0/12 pool).
 # A bare local `uvicorn` without that env trusts only 127.0.0.1.
 CMD ["uvicorn", "policy_assistant.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

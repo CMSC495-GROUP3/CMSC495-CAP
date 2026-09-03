@@ -163,10 +163,6 @@ def _container_ip(name: str) -> str:
 
 def main() -> int:
     env = os.environ.copy()
-    # Use ranges separate from the deployment defaults so this isolated project
-    # can run while a developer's normal stack is already up.
-    env["EDGE_SUBNET"] = env.get("ACCEPTANCE_EDGE_SUBNET", "10.252.0.0/24")
-    env["APP_SUBNET"] = env.get("ACCEPTANCE_APP_SUBNET", "10.253.0.0/24")
     env["SITE_ADDRESS"] = "http://localhost"
     env["ACCEPTANCE_PASSWORD_HASH"] = "build-placeholder"
 

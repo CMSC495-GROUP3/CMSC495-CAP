@@ -3,7 +3,7 @@
 
 # FastAPI — web framework
 fastapi
-uvicorn[standard]
+uvicorn[standard]>=0.30
 slowapi
 
 # Auth — JWT tokens + password hashing

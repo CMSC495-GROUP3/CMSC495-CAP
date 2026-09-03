@@ -13,10 +13,10 @@ RUN npm run build
 # Stage 2 — serve with Nginx
 FROM nginx:alpine
 
-# The official image renders /etc/nginx/templates/*.template at startup.
-# docker-compose.yml restricts envsubst to EDGE_SUBNET so Nginx variables such
-# as $remote_addr and $host remain untouched.
-COPY nginx.conf /etc/nginx/templates/default.conf.template
+# Drop the default Nginx config and use ours. The config hard-codes Docker's
+# default address-pool CIDR for real_ip, so this image starts outside Compose
+# without envsubst templating.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy the built React app from Stage 1
 COPY --from=builder /app/dist /usr/share/nginx/html
