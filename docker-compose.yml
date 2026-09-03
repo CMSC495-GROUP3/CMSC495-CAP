@@ -49,7 +49,7 @@ services:
       # set_real_ip_from: Docker's default bridge address pool, so only
       # Compose peers (Nginx) can set client identity — never an external
       # caller. Never set this to *.
-      FORWARDED_ALLOW_IPS: "172.16.0.0/12"
+      FORWARDED_ALLOW_IPS: "172.16.0.0/12,192.168.0.0/16"
     # Not published. Nginx proxies /api/ to this container on port 8000.
     networks:
       - app

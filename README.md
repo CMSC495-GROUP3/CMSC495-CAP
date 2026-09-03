@@ -110,7 +110,7 @@ Nginx also proxies `/api/` to `api` with buffering off, so streamed tokens reach
 the browser as they are produced. Client identity for login rate limits follows
 an explicit trust chain on two Compose networks: Caddy (edge) replaces any
 client-supplied `X-Forwarded-*` with the connecting address; Nginx trusts that
-header only from Docker's default address pool (`172.16.0.0/12`) via `real_ip`,
+header only from Docker's default address pools (`172.16.0.0/12` and `192.168.0.0/16`) via `real_ip`,
 then replaces `X-Forwarded-For` with the resolved client before talking to the
 API; Uvicorn trusts the same pool via `FORWARDED_ALLOW_IPS`. Only Caddy
 publishes host ports; Nginx and the API stay internal. `api` is FastAPI with

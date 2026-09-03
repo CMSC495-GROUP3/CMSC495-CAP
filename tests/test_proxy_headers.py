@@ -4,11 +4,12 @@ Production path (see docker-compose.yml):
 
 * Caddy is the public edge. With no trusted_proxies, it replaces any
   client-supplied X-Forwarded-* with the connecting client's address.
-* Nginx trusts X-Forwarded-For only from Docker's default address pool
-  (set_real_ip_from 172.16.0.0/12), resolves $remote_addr to that client,
-  then *replaces* X-Forwarded-For with $remote_addr toward Uvicorn.
-* Uvicorn trusts X-Forwarded-* only from the same Docker address pool
-  (FORWARDED_ALLOW_IPS=172.16.0.0/12).
+* Nginx trusts X-Forwarded-For only from Docker's default address pools
+  (set_real_ip_from 172.16.0.0/12 and 192.168.0.0/16), resolves $remote_addr
+  to that client, then *replaces* X-Forwarded-For with $remote_addr toward
+  Uvicorn.
+* Uvicorn trusts X-Forwarded-* only from the same Docker address pools
+  (FORWARDED_ALLOW_IPS=172.16.0.0/12,192.168.0.0/16).
 
 Behavioural proof of the full live chain is scripts/test_proxy_chain.py.
 """
@@ -28,7 +29,7 @@ from policy_assistant.api import main
 from policy_assistant.api.limiter import limiter
 
 # Must match docker-compose.yml FORWARDED_ALLOW_IPS and nginx.conf.
-DOCKER_POOL_CIDR = "172.16.0.0/12"
+DOCKER_POOL_CIDR = "172.16.0.0/12,192.168.0.0/16"
 NGINX_PEER = ("172.18.0.10", 50000)
 UNTRUSTED_PEER = ("203.0.113.9", 44321)
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +121,7 @@ def test_legacy_append_style_xff_documents_why_nginx_must_replace(caplog):
 def test_nginx_uses_real_ip_then_replaces_xff_with_remote_addr():
     conf = (REPO_ROOT / "web" / "nginx.conf").read_text(encoding="utf-8")
     assert "set_real_ip_from 172.16.0.0/12;" in conf
+    assert "set_real_ip_from 192.168.0.0/16;" in conf
     assert "real_ip_header X-Forwarded-For;" in conf
     assert "proxy_set_header X-Forwarded-For $remote_addr;" in conf
     assert not re.search(
@@ -145,7 +147,7 @@ def test_dockerfile_does_not_trust_every_forwarded_ip():
 
 def test_compose_trusts_docker_pool_and_keeps_api_off_edge():
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert 'FORWARDED_ALLOW_IPS: "172.16.0.0/12"' in compose
+    assert 'FORWARDED_ALLOW_IPS: "172.16.0.0/12,192.168.0.0/16"' in compose
     assert "EDGE_SUBNET" not in compose
     assert "APP_SUBNET" not in compose
     assert "ipam:" not in compose
