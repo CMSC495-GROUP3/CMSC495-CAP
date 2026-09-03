@@ -460,6 +460,53 @@ Certificates persist in the `caddy_data` volume across restarts and deploys.
 With an Elastic IP the DuckDNS record never needs to change, so no update
 client runs on the instance.
 
+`SSH_KEY_PATH` must point at the instance's private key. If `~/.ssh/config`
+already names the key for the host, a wrong path only prints a warning and ssh
+uses the configured key, but pass the real path so the script fails loudly when
+the key is missing.
+
+### Checking a deploy
+
+The script ends with `docker compose ps`. Three more checks confirm the stack is
+serving and that client addresses reach the API the way the trust chain intends
+(see Architecture).
+
+1. The site answers over TLS and the health route returns 200:
+
+   ```bash
+   curl -sI https://policy-assistant.duckdns.org/ | grep -i strict-transport
+   curl -s -o /dev/null -w '%{http_code}\n' https://policy-assistant.duckdns.org/api/health
+   ```
+
+2. Both Compose networks sit inside `172.16.0.0/12`, which is the range Nginx
+   and Uvicorn trust, and the API container carries the trust variable:
+
+   ```bash
+   ssh ubuntu@policy-assistant.duckdns.org '
+     docker network inspect cmsc495-cap_edge cmsc495-cap_app \
+       --format "{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}"
+     docker inspect cmsc495-cap-api-1 \
+       --format "{{range .Config.Env}}{{println .}}{{end}}" | grep FORWARDED'
+   ```
+
+   A subnet outside that range means Docker's first address pool was exhausted
+   on the host. The stack still runs, but every client shares one login
+   rate-limit bucket until the pool is fixed.
+
+3. The API log shows the external client, not a container address. Send one
+   request with a forged header, then read the log:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 198.18.0.1' \
+     -H 'Content-Type: application/json' --data '{"password":"wrong"}' \
+     https://policy-assistant.duckdns.org/api/auth/login
+   ssh ubuntu@policy-assistant.duckdns.org 'docker logs cmsc495-cap-api-1 --tail 5'
+   ```
+
+   The request returns 401 and the "Failed login attempt from" line carries
+   your public address. If it carries 198.18.0.1, the forged header got
+   through and the proxy configuration has regressed.
+
 ## Tests and CI
 
 ```bash
