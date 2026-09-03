@@ -1,0 +1,4 @@
+# Lint and format only; the CI lint job installs just this. Pinned exactly:
+# the formatter's output changes between releases, and CI fails on a
+# formatting diff, so everyone must run the same one.
+ruff==0.16.5

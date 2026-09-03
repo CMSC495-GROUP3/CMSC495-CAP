@@ -3,7 +3,7 @@
 
 api:
   - changed-files:
-      - any-glob-to-any-file: ["policy_assistant/**"]
+      - any-glob-to-any-file: ["policy_assistant/**", "Dockerfile"]
 
 web:
   - changed-files:
@@ -11,7 +11,7 @@ web:
 
 tests:
   - changed-files:
-      - any-glob-to-any-file: ["tests/**"]
+      - any-glob-to-any-file: ["tests/**", "pyproject.toml"]
 
 evaluation:
   - changed-files:

@@ -52,5 +52,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Backend stdout, browser console, or CI output. Remove anything that looks like a key, a hash, or a real policy document.
+      description: API stdout, browser console, or CI output. Remove anything that looks like a key, a hash, or a real policy document.
       render: text

@@ -2,13 +2,11 @@
 #   pip install -r requirements/dev.txt
 -r api.txt
 -r ingest.txt
+-r lint.txt
 
 pytest
 pytest-cov
 # FastAPI's TestClient is built on httpx
 httpx
-# Lint and format. Pinned exactly: the formatter's output changes between
-# releases, and CI fails on a formatting diff, so everyone must run the same one.
-ruff==0.16.5
 # Known-vulnerability scan of the Python dependency tree (scripts/audit.sh)
 pip-audit

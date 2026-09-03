@@ -320,7 +320,7 @@ rather than `echo`.
 Replace them with real ones and the same commands apply.
 
 ```bash
-python -m policy_assistant.rag.seed_documents     # upload documents/ to S3
+python -m policy_assistant.rag.seed_documents     # upload data/sample-policies/ to S3
 python -m policy_assistant.rag.embed_documents    # chunk, embed, store in Atlas
 ```
 
@@ -482,11 +482,14 @@ tests/              pytest suite; conftest.py stubs every external service
 scripts/            EC2 deploy helper, dependency audit, and the load-test harness
 evaluation/         labeled question set and how to run it
 data/               Sample policy corpus
-requirements/       api.txt (the Docker image), ingest.txt, dev.txt (everything)
+requirements/       base.txt shared; api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)
 pyproject.toml      ruff and pytest settings
+Makefile            setup, stub, web, test, lint, build, compose; `make` lists them
 Dockerfile          the API image; web/ has its own
 docker-compose.yml  caddy, web, api
 Caddyfile           TLS termination and reverse proxy in front of Nginx
+.github/            CI, security, and PR-check workflows, templates, Dependabot, CODEOWNERS
+.agents/            a skill file describing this repo for coding agents
 ```
 
 ## Known limitations

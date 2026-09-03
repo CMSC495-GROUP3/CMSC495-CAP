@@ -88,7 +88,7 @@ make audit    # known vulnerabilities in both dependency trees (the Security wor
 
 Python formatting is enforced. `make fmt` before you commit and CI will not
 complain. The rules are in `pyproject.toml`; the version of ruff is pinned in
-`requirements/dev.txt` because the formatter's output changes between releases.
+`requirements/lint.txt` because the formatter's output changes between releases.
 
 ### What CI runs
 
@@ -101,7 +101,7 @@ so they run on fork PRs too.
 | CI | Python tests (3.11 through 3.14) | a failing test, or coverage under 80% on any version |
 | CI | Evaluation dataset | `evaluation/questions.json` that `load_cases` rejects |
 | CI | Web lint, types, build | ESLint, `tsc -b`, or `vite build` |
-| CI | Docker images and Compose | either image failing to build, the backend image failing to import `main`, or an invalid `docker-compose.yml` |
+| CI | Docker images and Compose | either image failing to build, the API image failing to import `policy_assistant.api.main`, or an invalid `docker-compose.yml` |
 | CI | Shell, Dockerfile, workflow lint | shellcheck on `scripts/*.sh`, hadolint on both Dockerfiles, actionlint on the workflows, or a `.env`, key, or build output that got committed |
 | Security | CodeQL, dependency advisories, dependency review, leaked secrets | a new finding; the accepted-advisory list is in `scripts/audit.sh` |
 | PR checks | title, description, labels | a title not in `type: what changed` form, or an empty "What and why" |
@@ -150,7 +150,7 @@ keep it obviously partial rather than pretending to be complete.
 | I want to change... | Look in |
 |---|---|
 | a tuning knob (threshold, chunk size, TTLs, thread pool) | `policy_assistant/rag/config.py`; every value is env-overridable, defaults live here |
-| the answer prompt | `rag_chain.py` `ANSWER_SYSTEM_PROMPT`, then bump `PROMPT_VERSION` in `config.py` or cached answers keep serving the old prompt |
+| the answer prompt | `policy_assistant/rag/rag_chain.py` `ANSWER_SYSTEM_PROMPT`, then bump `PROMPT_VERSION` in `policy_assistant/rag/config.py` or cached answers keep serving the old prompt |
 | retrieval or the grounding gate | `policy_assistant/rag/rag_chain.py` |
 | which model or vendor is used | `policy_assistant/rag/llm.py` only. Add a subclass, register it in `_PROVIDERS`, set `LLM_PROVIDER` |
 | how a source format is parsed | `policy_assistant/rag/documents.py` |
@@ -196,7 +196,7 @@ covers `.env`; the rest is on you.
   through `create_index`; drop the index by hand or run `collMod` first.
 - **Changing the embedding model** changes the vector dimensions, which are
   baked into the Atlas index. Re-run ingestion and recreate the index.
-- **`bcrypt` is pinned to 4.0.1** because `passlib` breaks on 5.x. Do not bump
+- **`bcrypt` is pinned to 4.3.0** in `requirements/api.txt` because `passlib` breaks on 5.x. Do not bump
   it without replacing `passlib`.
 - **Do not deploy under gunicorn `--preload`.** `MongoClient` is not fork-safe
   and the collection handles bind at import. `uvicorn --workers N` is fine. The

@@ -37,7 +37,7 @@ documents_col = get_collection("documents")
 # One record per chat request. The substrate for content-gap and FAQ analytics.
 query_logs_col = get_collection("query_logs")
 
-# One record per hand-off to a person. See policy_assistant/api/routes/escalations.py.
+# One record per hand-off to a person. See api/routes/escalations.py.
 escalations_col = get_collection("escalations")
 
 # Caches. Keyed by content hash on _id, so no separate unique index is needed.

@@ -52,7 +52,7 @@ scripts/loadtest/   fakemongo.py (partial in-memory Mongo), server.py (the stub 
 scripts/            deploy.sh, audit.sh
 evaluation/         20 labeled questions and the metric definitions
 data/               sample policy corpus
-requirements/       base.txt, api.txt (the Docker image), ingest.txt, dev.txt (everything)
+requirements/       base.txt, api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)
 pyproject.toml      ruff and pytest settings
 Dockerfile          the API image; web/Dockerfile is the Nginx image
 .github/            workflows (ci, security, pr-checks, evaluation), templates, Dependabot, CODEOWNERS
@@ -117,7 +117,7 @@ gitleaks. PR checks enforce the title format and a filled-in description.
   pyupgrade, simplify, ruff's own. Line length 100. E501 is off because the
   formatter wraps code. B008 is off because FastAPI's `Depends()` lives in
   default arguments.
-- ruff is pinned exactly in `requirements/dev.txt`. Do not run a different
+- ruff is pinned exactly in `requirements/lint.txt`. Do not run a different
   version; the formatter's output changes between releases and CI diffs it.
 - Files that must set environment variables before importing the app
   (`tests/conftest.py`, `scripts/loadtest/server.py`) mark late imports with

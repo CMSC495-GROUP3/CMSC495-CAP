@@ -56,26 +56,65 @@ class _UploadOnlyS3:
         self.uploads.append((Bucket, Key))
 
 
-def test_seeding_uploads_the_sample_corpus_from_the_repository_root(monkeypatch):
-    """The default source directory is resolved relative to this module's
-    location, which the package move once broke. Guard the real path."""
+SEEDING_MODULE = "policy_assistant.rag.seed_documents"
+
+
+@pytest.fixture
+def seeding(monkeypatch):
+    """The seeding script imported with S3 stubbed and a bucket configured.
+
+    Unloaded afterwards so the stubbed module does not outlive the test."""
     s3 = _UploadOnlyS3()
     monkeypatch.setattr(boto3, "client", lambda *_args, **_kwargs: s3)
     monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
-    sys.modules.pop("policy_assistant.rag.seed_documents", None)
-    seeding = importlib.import_module("policy_assistant.rag.seed_documents")
+    sys.modules.pop(SEEDING_MODULE, None)
+    try:
+        yield importlib.import_module(SEEDING_MODULE), s3
+    finally:
+        sys.modules.pop(SEEDING_MODULE, None)
 
+
+def test_seeding_uploads_the_sample_corpus_from_the_repository_root(seeding):
+    """The default source directory is resolved relative to the module's
+    location, which the package move once broke. Guard the real path."""
+    module, s3 = seeding
     sample_dir = Path(__file__).resolve().parent.parent / "data" / "sample-policies"
     expected = sorted(p.name for p in sample_dir.iterdir() if p.is_file())
-    assert sample_dir == seeding.SAMPLE_DIR
+    assert sample_dir == module.SAMPLE_DIR
     assert len(expected) > 0
 
-    seeding.upload_documents()
+    module.upload_documents()
 
     assert [bucket for bucket, _ in s3.uploads] == ["test-bucket"] * len(expected)
     assert [key for _, key in s3.uploads] == [
-        f"{seeding.S3_DOCUMENT_PREFIX}{name}" for name in expected
+        f"{module.S3_DOCUMENT_PREFIX}{name}" for name in expected
     ]
+
+
+def test_seeding_without_a_bucket_stops_with_actionable_message(seeding, monkeypatch):
+    module, s3 = seeding
+    monkeypatch.delenv("S3_BUCKET_NAME")
+
+    with pytest.raises(SystemExit, match="S3_BUCKET_NAME is not set"):
+        module.upload_documents()
+    assert s3.uploads == []
+
+
+def test_seeding_from_a_missing_directory_names_it(seeding, tmp_path):
+    module, s3 = seeding
+
+    with pytest.raises(SystemExit, match="No such directory"):
+        module.upload_documents(tmp_path / "does-not-exist")
+    assert s3.uploads == []
+
+
+def test_seeding_from_an_empty_directory_uploads_nothing(seeding, tmp_path):
+    module, s3 = seeding
+    (tmp_path / ".hidden").write_text("ignored")
+
+    with pytest.raises(SystemExit, match="No documents found"):
+        module.upload_documents(tmp_path)
+    assert s3.uploads == []
 
 
 def test_fetches_all_s3_pages_and_skips_directory_placeholders(monkeypatch):
