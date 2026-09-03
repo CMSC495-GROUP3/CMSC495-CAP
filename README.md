@@ -107,10 +107,16 @@ Docker Compose runs three services on one EC2 instance. Only `caddy` publishes
 ports. It terminates TLS with a Let's Encrypt certificate for `SITE_ADDRESS`
 and forwards to `web`, which builds the React app and serves it through Nginx.
 Nginx also proxies `/api/` to `api` with buffering off, so streamed tokens reach
-the browser as they are produced. `api` is FastAPI with the RAG pipeline.
-OpenAI, MongoDB Atlas, and Amazon S3 are managed services outside Compose. With
-`SITE_ADDRESS` unset, Caddy serves plain HTTP on localhost, which is what
-`make compose` does.
+the browser as they are produced. Client identity for login rate limits follows
+an explicit trust chain on two Compose networks: Caddy (edge) replaces any
+client-supplied `X-Forwarded-*` with the connecting address; Nginx trusts that
+header only from Docker's default address pool (`172.16.0.0/12`) via `real_ip`,
+then replaces `X-Forwarded-For` with the resolved client before talking to the
+API; Uvicorn trusts the same pool via `FORWARDED_ALLOW_IPS`. Only Caddy
+publishes host ports; Nginx and the API stay internal. `api` is FastAPI with
+the RAG pipeline. OpenAI, MongoDB Atlas, and Amazon S3 are managed services
+outside Compose. With `SITE_ADDRESS` unset, Caddy serves plain HTTP on
+localhost, which is what `make compose` does.
 
 ## How a question is answered
 
@@ -460,6 +466,7 @@ client runs on the instance.
 make check                          # tests, lint, types, and build; what CI runs
 .venv/bin/python -m pytest          # the Python suite, about a second
 .venv/bin/python -m pytest --cov    # with coverage; CI fails under 80%
+make acceptance                     # real container proxy/rate-limit chain
 ```
 
 The suite runs the real application with its external services replaced, the

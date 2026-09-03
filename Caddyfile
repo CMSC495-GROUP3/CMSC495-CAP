@@ -6,9 +6,16 @@
 # this host before the stack starts. The local default, http://localhost, serves
 # plain HTTP with no certificate.
 #
+# Trust boundary: Caddy is the public edge. No trusted_proxies are configured,
+# so client-supplied X-Forwarded-* values are ignored and replaced with the
+# connecting client's address before the request reaches Nginx.
+#
 # Caddy flushes text/event-stream responses as they arrive, so the chat stream
 # needs no extra configuration here.
 {$SITE_ADDRESS} {
-    reverse_proxy web:80
-    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy web:80 {
+		# Intentionally empty: do not list trusted_proxies. Listing any range
+		# would let those peers pass forged X-Forwarded-For through to Nginx.
+	}
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 }

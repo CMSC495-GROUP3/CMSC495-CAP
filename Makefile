@@ -16,7 +16,7 @@ FAKE_SCORE := $(if $(REFUSE),0.50,0.78)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup stub web test cov lint lint-py lint-web fmt audit build check compose loadtest clean
+.PHONY: help setup stub web test cov lint lint-py lint-web fmt audit build check compose acceptance loadtest clean
 
 help: ## Show this list
 	@grep -E '^[a-z][a-z-]*:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -63,6 +63,9 @@ check: test lint build ## What the CI workflow runs on every PR (audit runs in S
 
 compose: ## Full stack in Docker against the real services in .env
 	docker compose up --build
+
+acceptance: ## Real Caddy -> Nginx -> Uvicorn client-IP and rate-limit check
+	$(PY) scripts/test_proxy_chain.py
 
 loadtest: ## Throughput measurement against `make stub`; see scripts/loadtest/RESULTS.md
 	$(PY) scripts/loadtest/run.py --concurrency 10 20 40 80

@@ -179,6 +179,8 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config --quiet
+      - name: Full proxy-chain acceptance
+        run: python scripts/test_proxy_chain.py
 
   repo-checks:
     name: Shell, Dockerfile, workflow lint

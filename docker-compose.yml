@@ -1,9 +1,8 @@
 services:
 
   # TLS termination. Caddy obtains and renews a Let's Encrypt certificate for
-  # SITE_ADDRESS and forwards everything to Nginx on the internal network. With
-  # SITE_ADDRESS unset it serves plain HTTP on localhost, which is what
-  # `make compose` uses.
+  # SITE_ADDRESS and forwards to Nginx on the edge network. With SITE_ADDRESS
+  # unset it serves plain HTTP on localhost, which is what `make compose` uses.
   caddy:
     image: caddy:2-alpine
     ports:
@@ -20,6 +19,8 @@ services:
       - caddy_config:/config
     depends_on:
       - web
+    networks:
+      - edge
     restart: unless-stopped
 
   web:
@@ -27,9 +28,13 @@ services:
       # Self-contained context — the build needs nothing from the parent
       context: web
       dockerfile: Dockerfile
-    # Not published. Caddy reaches Nginx on port 80 over the Compose network.
+    # Not published. Caddy reaches Nginx on port 80 over the edge network;
+    # Nginx reaches the API on port 8000 over the app network.
     depends_on:
       - api
+    networks:
+      - edge
+      - app
     restart: unless-stopped
 
   api:
@@ -39,9 +44,23 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      # Uvicorn ProxyHeadersMiddleware trust list. Matches Nginx
+      # set_real_ip_from: Docker's default bridge address pool, so only
+      # Compose peers (Nginx) can set client identity — never an external
+      # caller. Never set this to *.
+      FORWARDED_ALLOW_IPS: "172.16.0.0/12"
     # Not published. Nginx proxies /api/ to this container on port 8000.
+    networks:
+      - app
     restart: unless-stopped
 
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  # Public edge: Caddy ↔ Nginx. Only Caddy publishes host ports.
+  edge:
+  # Private app: Nginx ↔ Uvicorn. API stays off the edge network.
+  app:
