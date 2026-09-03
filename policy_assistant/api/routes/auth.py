@@ -2,17 +2,15 @@ import logging
 import os
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 from fastapi import APIRouter, HTTPException, Request, status
 from jose import jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from policy_assistant.api.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # No default — main.py already enforced this is set at startup
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
@@ -46,7 +44,17 @@ def login(request: Request, body: LoginRequest):
             detail="Server authentication is not configured.",
         )
 
-    if not pwd_context.verify(body.password, password_hash):
+    try:
+        is_valid = bcrypt.checkpw(body.password.encode(), password_hash.encode())
+    except ValueError:
+        # checkpw raises when the stored value is not a bcrypt string.
+        logger.error("APP_PASSWORD_HASH is not a valid bcrypt hash")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server authentication is not configured.",
+        ) from None
+
+    if not is_valid:
         logger.warning(
             "Failed login attempt from %s", request.client.host if request.client else "unknown"
         )

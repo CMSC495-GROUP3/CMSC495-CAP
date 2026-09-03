@@ -198,8 +198,6 @@ covers `.env`; the rest is on you.
   through `create_index`; drop the index by hand or run `collMod` first.
 - **Changing the embedding model** changes the vector dimensions, which are
   baked into the Atlas index. Re-run ingestion and recreate the index.
-- **`bcrypt` is pinned to 4.3.0** in `requirements/api.txt` because `passlib` breaks on 5.x. Do not bump
-  it without replacing `passlib`.
 - **`typescript` stays on 6.0.x** in `web/package.json` because `typescript-eslint`
   pins its peer to `<6.1.0`, so `npm ci` refuses 7.x. Dependabot ignores the
   7.x line; lift that in `.github/dependabot.yml` once `typescript-eslint`

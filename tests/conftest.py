@@ -30,9 +30,9 @@ os.environ.pop("APP_ENV", None)  # FakeProvider refuses to run as production
 
 TEST_PASSWORD = "correct-horse-battery-staple"
 
-from passlib.context import CryptContext  # noqa: E402
+import bcrypt  # noqa: E402
 
-os.environ["APP_PASSWORD_HASH"] = CryptContext(schemes=["bcrypt"]).hash(TEST_PASSWORD)
+os.environ["APP_PASSWORD_HASH"] = bcrypt.hashpw(TEST_PASSWORD.encode(), bcrypt.gensalt(4)).decode()
 
 from policy_assistant.rag import mongo  # noqa: E402
 from scripts.loadtest.fakemongo import FakeDB  # noqa: E402

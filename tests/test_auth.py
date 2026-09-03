@@ -22,6 +22,11 @@ def test_unconfigured_password_is_a_server_error(client, monkeypatch):
     assert client.post("/api/auth/login", json={"password": TEST_PASSWORD}).status_code == 500
 
 
+def test_malformed_password_hash_is_a_server_error(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH", "not-a-bcrypt-hash")
+    assert client.post("/api/auth/login", json={"password": TEST_PASSWORD}).status_code == 500
+
+
 def test_protected_routes_reject_missing_and_bad_tokens(client):
     assert client.get("/api/conversations").status_code in (401, 403)
     assert (
