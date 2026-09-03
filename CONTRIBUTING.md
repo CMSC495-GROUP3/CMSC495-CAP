@@ -111,8 +111,10 @@ dependency shows up as a failed scheduled run rather than in someone's
 unrelated PR.
 
 Branch protection on `main` should require the single check named **CI
-status**, which fails if any CI job fails. Requiring that one name means a job
-added or renamed in `ci.yml` cannot quietly stop being required.
+status**, which fails unless every CI job succeeded. A job that is skipped
+counts as a failure here, so a wrong `if:` or `paths:` condition on a required
+job shows up as a red check rather than a silent pass. Requiring that one name
+means a job added or renamed in `ci.yml` cannot quietly stop being required.
 
 A fourth workflow, **Live evaluation**, runs the labeled question set against
 the real provider and index. It costs money, so it only runs when a maintainer
