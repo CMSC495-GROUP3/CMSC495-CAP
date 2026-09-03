@@ -1,9 +1,20 @@
+import axios from 'axios'
 import { useState } from 'react'
 import client, { TOKEN_KEY } from '../../api/client'
 import { APP_NAME } from '../../config'
 
 interface Props {
   onSuccess: () => void
+}
+
+// Only a 401 means the password was wrong. A rate limit or a server-side
+// configuration error must not be reported as one, or a locked-out admin
+// would keep retrying a password that was never the problem.
+function loginErrorMessage(err: unknown): string {
+  const status = axios.isAxiosError(err) ? err.response?.status : undefined
+  if (status === 401) return 'Incorrect password.'
+  if (status === 429) return 'Too many attempts. Wait a minute and try again.'
+  return 'Sign-in is unavailable right now. Try again in a moment.'
 }
 
 export default function LoginForm({ onSuccess }: Props) {
@@ -19,8 +30,8 @@ export default function LoginForm({ onSuccess }: Props) {
       const res = await client.post('/api/auth/login', { password })
       localStorage.setItem(TOKEN_KEY, res.data.access_token)
       onSuccess()
-    } catch {
-      setError('Incorrect password.')
+    } catch (err) {
+      setError(loginErrorMessage(err))
     } finally {
       setLoading(false)
     }

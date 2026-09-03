@@ -10,7 +10,7 @@ load_dotenv()
 
 # Fail fast on missing secrets. A clear startup error beats a silent security
 # hole such as signing JWTs with a predictable default key.
-_REQUIRED = ("JWT_SECRET_KEY", "MONGODB_URI")
+_REQUIRED = ("JWT_SECRET_KEY", "MONGODB_URI", "APP_PASSWORD_HASH")
 _missing = [name for name in _REQUIRED if not os.getenv(name)]
 if _missing:
     raise RuntimeError(
@@ -29,6 +29,7 @@ from slowapi.errors import RateLimitExceeded  # noqa: E402
 
 from policy_assistant.api.db import ensure_indexes  # noqa: E402
 from policy_assistant.api.limiter import limiter  # noqa: E402
+from policy_assistant.api.routes.auth import is_bcrypt_hash  # noqa: E402
 from policy_assistant.api.routes.auth import router as auth_router  # noqa: E402
 from policy_assistant.api.routes.chat import router as chat_router  # noqa: E402
 from policy_assistant.api.routes.conversations import router as conversations_router  # noqa: E402
@@ -40,6 +41,16 @@ from policy_assistant.rag.config import (  # noqa: E402
     SIMILARITY_THRESHOLD,
     THREADPOOL_TOKENS,
 )
+
+# checkpw cannot tell a corrupted hash from a wrong password, so a stray newline
+# in a mounted secret would lock everyone out and log it as failed logins.
+# Refuse to start instead.
+if not is_bcrypt_hash(os.environ["APP_PASSWORD_HASH"]):
+    raise RuntimeError(
+        "APP_PASSWORD_HASH is not a bcrypt hash. It must be the full 60-character "
+        "$2b$ string with no surrounding whitespace; see the README for how to "
+        "generate one."
+    )
 
 
 @asynccontextmanager

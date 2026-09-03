@@ -16,6 +16,7 @@ from here, that is a design problem to fix in the application, not in tests.
 import os
 from datetime import timedelta
 
+import bcrypt
 import pytest
 
 # main.py and llm.py read these at import, so they are set before either loads.
@@ -30,8 +31,8 @@ os.environ.pop("APP_ENV", None)  # FakeProvider refuses to run as production
 
 TEST_PASSWORD = "correct-horse-battery-staple"
 
-import bcrypt  # noqa: E402
-
+# Cost 4 is bcrypt's minimum and exists only to keep the suite fast. Never use
+# it for a real hash.
 os.environ["APP_PASSWORD_HASH"] = bcrypt.hashpw(TEST_PASSWORD.encode(), bcrypt.gensalt(4)).decode()
 
 from policy_assistant.rag import mongo  # noqa: E402

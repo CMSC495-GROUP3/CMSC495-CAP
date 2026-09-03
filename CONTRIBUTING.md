@@ -52,7 +52,7 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
 2. Generate the two secrets:
    ```bash
    openssl rand -hex 32                                   # JWT_SECRET_KEY
-   .venv/bin/python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('your-password'))"   # APP_PASSWORD_HASH
+   .venv/bin/python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"   # APP_PASSWORD_HASH
    ```
    A bcrypt hash contains `$`. Paste it into `.env` with an editor, not `echo`.
 3. Load the corpus, then create the vector index in the Atlas UI (the README's
