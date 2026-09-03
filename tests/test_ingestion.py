@@ -79,7 +79,9 @@ def test_seeding_uploads_the_sample_corpus_from_the_repository_root(seeding):
     location, which the package move once broke. Guard the real path."""
     module, s3 = seeding
     sample_dir = Path(__file__).resolve().parent.parent / "data" / "sample-policies"
-    expected = sorted(p.name for p in sample_dir.iterdir() if p.is_file())
+    expected = sorted(
+        p.name for p in sample_dir.iterdir() if p.is_file() and not p.name.startswith(".")
+    )
     assert sample_dir == module.SAMPLE_DIR
     assert len(expected) > 0
 
