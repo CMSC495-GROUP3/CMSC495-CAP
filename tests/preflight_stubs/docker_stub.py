@@ -12,12 +12,24 @@ def _emit(line: str = "") -> None:
     sys.stdout.buffer.write(f"{line}\n".encode())
 
 
+def _label_key(fmt: str) -> str | None:
+    prefix = '{{index .Labels "'
+    suffix = '"}}'
+    if fmt.startswith(prefix) and fmt.endswith(suffix):
+        return fmt[len(prefix) : -len(suffix)]
+    return None
+
+
 def main() -> None:
     """Dispatch the docker subcommands the preflight script calls."""
     fixture_path = Path(sys.argv[1])
     args = sys.argv[2:]
     data = json.loads(fixture_path.read_text(encoding="utf-8"))
     networks = {network["id"]: network for network in data.get("networks", [])}
+
+    if args[:2] == ["compose", "config"]:
+        _emit(f"name: {data.get('project', 'cmsc495-cap-team')}")
+        return
 
     if args[:2] == ["network", "ls"] and "--quiet" in args:
         for network in data.get("networks", []):
@@ -41,8 +53,10 @@ def main() -> None:
         network = networks.get(network_id)
         if network is None:
             raise SystemExit(f"network {network_id} not found")
-        if fmt == '{{index .Labels "com.docker.compose.project.working_dir"}}':
-            _emit(network.get("working_dir", ""))
+        label_key = _label_key(fmt or "")
+        if label_key is not None:
+            labels = network.get("labels", {})
+            _emit(str(labels.get(label_key, "")))
             return
         if fmt == "{{range .IPAM.Config}}{{println .Subnet}}{{end}}":
             for subnet in network.get("subnets", []):

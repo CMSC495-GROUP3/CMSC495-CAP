@@ -57,21 +57,53 @@ cidrs_overlap() {
   ((left_start <= right_end && right_start <= left_end))
 }
 
-# Emit "NETWORK_ID BRIDGE_NAME" for Compose networks owned by this checkout
-# whose IPAM subnet exactly matches the target. The bridge is taken from the
-# Docker option when set; otherwise it is the default br-<12-char-id> name.
+# Project name `docker compose down` will use: COMPOSE_PROJECT_NAME, compose
+# `name:`, `.env`, then the project directory. Do not use working_dir labels.
+resolve_production_compose_project() {
+  local name
+  name="$(
+    docker compose config | awk '
+      /^name:[[:space:]]*/ {
+        sub(/^name:[[:space:]]*/, "")
+        gsub(/\r/, "")
+        print
+        exit
+      }
+    '
+  )"
+  name="${name%\"}"
+  name="${name#\"}"
+  name="${name%\'}"
+  name="${name#\'}"
+  if [[ -z "$name" ]]; then
+    printf 'ERROR: unable to resolve the Compose project name from docker compose config.\n' >&2
+    return 1
+  fi
+  printf '%s\n' "$name"
+}
+
+# Emit "NETWORK_ID BRIDGE_NAME" only when the Compose project label, logical
+# network label, and IPAM subnet all match production. Another `-p` project
+# from this checkout is not owned; `docker compose down` would not remove it.
 owned_subnet_artifacts() {
-  local target="$1"
-  local network owner subnet full_id bridge
+  local logical="$1"
+  local target="$2"
+  local network project network_label subnet full_id bridge
 
   while IFS= read -r network; do
     [[ -n "$network" ]] || continue
-    owner="$(
+    project="$(
       docker network inspect \
-        --format '{{index .Labels "com.docker.compose.project.working_dir"}}' \
+        --format '{{index .Labels "com.docker.compose.project"}}' \
         "$network" 2>/dev/null || true
     )"
-    [[ "$owner" == "$(pwd -P)" ]] || continue
+    [[ "$project" == "$PRODUCTION_COMPOSE_PROJECT" ]] || continue
+    network_label="$(
+      docker network inspect \
+        --format '{{index .Labels "com.docker.compose.network"}}' \
+        "$network" 2>/dev/null || true
+    )"
+    [[ "$network_label" == "$logical" ]] || continue
     while IFS= read -r subnet; do
       [[ "$subnet" == "$target" ]] || continue
       full_id="$(docker network inspect --format '{{.Id}}' "$network")"
@@ -182,16 +214,15 @@ check_subnet() {
   local -a owned_networks=()
   local -a owned_bridges=()
 
-  # An existing network owned by this checkout is excluded from collision
-  # comparisons (and its bridge route is ignored), but unrelated host routes
-  # and unrelated Docker networks are still validated. deploy.sh runs this
-  # preflight before `docker compose down`, which removes the owned network
-  # before Compose recreates it.
+  # An existing production-owned network is excluded from collision comparisons
+  # (and its bridge route is ignored), but unrelated host routes and unrelated
+  # Docker networks are still validated. deploy.sh runs this preflight before
+  # `docker compose down`, which removes only the default Compose project.
   while read -r network bridge; do
     [[ -n "$network" ]] || continue
     owned_networks+=("$network")
     [[ -n "$bridge" ]] && owned_bridges+=("$bridge")
-  done < <(owned_subnet_artifacts "$target")
+  done < <(owned_subnet_artifacts "$label" "$target")
 
   if ((${#owned_networks[@]} > 0)); then
     printf 'Subnet %s is already owned by this Compose project; excluding owned network from collision checks.\n' \
@@ -213,6 +244,7 @@ if cidrs_overlap "$EDGE_SUBNET" "$APP_SUBNET"; then
   exit 1
 fi
 
+PRODUCTION_COMPOSE_PROJECT="$(resolve_production_compose_project)"
 check_subnet edge "$EDGE_SUBNET"
 check_subnet app "$APP_SUBNET"
 printf 'Proxy network preflight passed: edge=%s app=%s\n' "$EDGE_SUBNET" "$APP_SUBNET"

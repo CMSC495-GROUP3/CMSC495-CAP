@@ -4,11 +4,10 @@ Exercises owned-network exclusion without talking to a real Docker daemon or
 host routing table. PATH stubs for ``docker`` and ``ip`` drive each scenario
 using MSYS-style paths so Git Bash process substitutions resolve them.
 
-The HIGH finding this covers: when the Compose project already owned the
-target subnet, the preflight used to return early and skip host-route and
-Docker-network collision checks. ``deploy.sh`` then runs ``docker compose
-down``, removing that owned network before recreate — so unchecked collisions
-could still break the deploy.
+Ownership matches the labels Compose actually sets on networks
+(``com.docker.compose.project`` and ``com.docker.compose.network``) plus an
+exact subnet match. Directory labels and other ``-p`` projects from the same
+checkout are not treated as production-owned.
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ PREFLIGHT = REPO_ROOT / "scripts" / "preflight-docker-networks.sh"
 STUB_DIR = Path(__file__).resolve().parent / "preflight_stubs"
 EDGE = "10.250.0.0/24"
 APP = "10.251.0.0/24"
+PRODUCTION_PROJECT = "cmsc495-cap-team"
 
 
 def _bash() -> str:
@@ -63,17 +63,6 @@ def _msys_path(path: Path) -> str:
     if len(resolved) >= 2 and resolved[1] == ":":
         return f"/{resolved[0].lower()}{resolved[2:]}"
     return resolved
-
-
-def _pwd_p(bash: str, cwd: Path) -> str:
-    result = subprocess.run(
-        [bash, "-c", "pwd -P"],
-        cwd=cwd,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -123,6 +112,7 @@ def _run_preflight(
     routes: list[str],
     edge: str = EDGE,
     app: str = APP,
+    project: str = PRODUCTION_PROJECT,
     script: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bash = _bash()
@@ -136,16 +126,8 @@ def _run_preflight(
 
     fixture_path = root / "fixture.json"
     target = script or PREFLIGHT
-
-    owner = _pwd_p(bash, work)
-    normalized = []
-    for network in networks:
-        item = dict(network)
-        if item.get("working_dir") == "$OWNER":
-            item["working_dir"] = owner
-        normalized.append(item)
     fixture_path.write_text(
-        json.dumps({"networks": normalized, "routes": routes}),
+        json.dumps({"project": project, "networks": networks, "routes": routes}),
         encoding="utf-8",
     )
     _install_path_stubs(bin_dir, fixture_path, python)
@@ -165,30 +147,51 @@ def _run_preflight(
     )
 
 
-def _owned_edge_network() -> dict:
+def _compose_labels(project: str, logical: str) -> dict[str, str]:
     return {
-        "id": "aaaaaaaaaaaa",
-        "full_id": "aaaaaaaaaaaabbbbbbbbbbbbcccccccccccccccc",
-        "working_dir": "$OWNER",
-        "subnets": [EDGE],
-        "bridge": "br-aaaaaaaaaaaa",
+        "com.docker.compose.project": project,
+        "com.docker.compose.network": logical,
+        "com.docker.compose.version": "2.29.2",
+        "com.docker.compose.config-hash": "test-config-hash",
     }
+
+
+def _network(
+    *,
+    short_id: str,
+    logical: str,
+    subnet: str,
+    project: str = PRODUCTION_PROJECT,
+) -> dict:
+    return {
+        "id": short_id,
+        "full_id": f"{short_id}{'b' * 20}{'c' * 12}",
+        "labels": _compose_labels(project, logical),
+        "subnets": [subnet],
+        "bridge": f"br-{short_id}",
+    }
+
+
+def _owned_edge_network() -> dict:
+    return _network(short_id="aaaaaaaaaaaa", logical="edge", subnet=EDGE)
 
 
 def _owned_app_network() -> dict:
-    return {
-        "id": "bbbbbbbbbbbb",
-        "full_id": "bbbbbbbbbbbbccccccccccccdddddddddddddddd",
-        "working_dir": "$OWNER",
-        "subnets": [APP],
-        "bridge": "br-bbbbbbbbbbbb",
-    }
+    return _network(short_id="bbbbbbbbbbbb", logical="app", subnet=APP)
+
+
+def _owned_routes() -> list[str]:
+    return [
+        f"{EDGE} dev br-aaaaaaaaaaaa proto kernel scope link src 10.250.0.1",
+        f"{APP} dev br-bbbbbbbbbbbb proto kernel scope link src 10.251.0.1",
+    ]
 
 
 def test_first_deploy_no_owned_networks(tmp_path: Path) -> None:
     """Clean host: no owned networks and no colliding routes."""
     result = _run_preflight(tmp_path, networks=[], routes=["192.168.1.0/24 dev eth0"])
     assert result.returncode == 0, result.stderr
+    assert "already owned" not in result.stdout
     assert "Proxy network preflight passed" in result.stdout
 
 
@@ -197,14 +200,52 @@ def test_repeat_deploy_owned_networks_only(tmp_path: Path) -> None:
     result = _run_preflight(
         tmp_path,
         networks=[_owned_edge_network(), _owned_app_network()],
-        routes=[
-            f"{EDGE} dev br-aaaaaaaaaaaa proto kernel scope link src 10.250.0.1",
-            f"{APP} dev br-bbbbbbbbbbbb proto kernel scope link src 10.251.0.1",
-        ],
+        routes=_owned_routes(),
     )
     assert result.returncode == 0, result.stderr
     assert "already owned by this Compose project" in result.stdout
     assert "Proxy network preflight passed" in result.stdout
+
+
+def test_same_checkout_different_compose_project_is_not_owned(tmp_path: Path) -> None:
+    """A `-p` project from this checkout is still a collision for production."""
+    alternate = [
+        _network(
+            short_id="aaaaaaaaaaaa",
+            logical="edge",
+            subnet=EDGE,
+            project="proxy-chain-acceptance-999",
+        ),
+        _network(
+            short_id="bbbbbbbbbbbb",
+            logical="app",
+            subnet=APP,
+            project="proxy-chain-acceptance-999",
+        ),
+    ]
+    result = _run_preflight(
+        tmp_path,
+        networks=alternate,
+        routes=["192.168.1.0/24 dev eth0"],
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "already owned by this Compose project" not in result.stdout
+    assert "overlaps Docker network" in result.stderr
+
+
+def test_correct_project_wrong_logical_network_is_not_owned(tmp_path: Path) -> None:
+    """Project match is not enough without the edge/app logical network label."""
+    mislabeled = [
+        _network(short_id="aaaaaaaaaaaa", logical="frontend", subnet=EDGE),
+        _owned_app_network(),
+    ]
+    result = _run_preflight(
+        tmp_path,
+        networks=mislabeled,
+        routes=["192.168.1.0/24 dev eth0"],
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "overlaps Docker network" in result.stderr
 
 
 def test_repeat_deploy_unrelated_host_route_conflict(tmp_path: Path) -> None:
@@ -213,9 +254,7 @@ def test_repeat_deploy_unrelated_host_route_conflict(tmp_path: Path) -> None:
         tmp_path,
         networks=[_owned_edge_network(), _owned_app_network()],
         routes=[
-            f"{EDGE} dev br-aaaaaaaaaaaa proto kernel scope link src 10.250.0.1",
-            f"{APP} dev br-bbbbbbbbbbbb proto kernel scope link src 10.251.0.1",
-            # Same CIDR on a different device — must still fail.
+            *_owned_routes(),
             f"{EDGE} via 192.168.1.1 dev eth0",
         ],
     )
@@ -228,17 +267,19 @@ def test_repeat_deploy_unrelated_docker_network_conflict(tmp_path: Path) -> None
     foreign = {
         "id": "ffffffffffff",
         "full_id": "ffffffffffffffffffffffffffffffffffffffff",
-        "working_dir": "/other/project",
+        "labels": {
+            "com.docker.compose.project": "other-app",
+            "com.docker.compose.network": "edge",
+            "com.docker.compose.version": "2.29.2",
+            "com.docker.compose.config-hash": "foreign-hash",
+        },
         "subnets": ["10.250.0.0/25"],
         "bridge": "br-ffffffffffff",
     }
     result = _run_preflight(
         tmp_path,
         networks=[_owned_edge_network(), _owned_app_network(), foreign],
-        routes=[
-            f"{EDGE} dev br-aaaaaaaaaaaa proto kernel scope link src 10.250.0.1",
-            f"{APP} dev br-bbbbbbbbbbbb proto kernel scope link src 10.251.0.1",
-        ],
+        routes=_owned_routes(),
     )
     assert result.returncode != 0, result.stdout + result.stderr
     assert "overlaps Docker network" in result.stderr
@@ -281,16 +322,23 @@ def test_legacy_early_return_would_miss_host_route_conflict(tmp_path: Path) -> N
             """\
             #!/bin/bash
             set -euo pipefail
+            PRODUCTION_COMPOSE_PROJECT="cmsc495-cap-team"
             project_owns_subnet() {
-              local target="$1" network owner subnet
+              local logical="$1" target="$2" network project network_label subnet
               while IFS= read -r network; do
                 [[ -n "$network" ]] || continue
-                owner="$(
+                project="$(
                   docker network inspect \\
-                    --format '{{index .Labels "com.docker.compose.project.working_dir"}}' \\
+                    --format '{{index .Labels "com.docker.compose.project"}}' \\
                     "$network" 2>/dev/null || true
                 )"
-                [[ "$owner" == "$(pwd -P)" ]] || continue
+                [[ "$project" == "$PRODUCTION_COMPOSE_PROJECT" ]] || continue
+                network_label="$(
+                  docker network inspect \\
+                    --format '{{index .Labels "com.docker.compose.network"}}' \\
+                    "$network" 2>/dev/null || true
+                )"
+                [[ "$network_label" == "$logical" ]] || continue
                 while IFS= read -r subnet; do
                   [[ "$subnet" == "$target" ]] && return 0
                 done < <(docker network inspect --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' "$network")
@@ -299,7 +347,7 @@ def test_legacy_early_return_would_miss_host_route_conflict(tmp_path: Path) -> N
             }
             check_subnet() {
               local label="$1" target="$2"
-              if project_owns_subnet "$target"; then
+              if project_owns_subnet "$label" "$target"; then
                 printf 'Subnet %s is already owned by this Compose project.\\n' "$target"
                 return
               fi
@@ -315,11 +363,7 @@ def test_legacy_early_return_would_miss_host_route_conflict(tmp_path: Path) -> N
         ),
     )
 
-    routes = [
-        f"{EDGE} dev br-aaaaaaaaaaaa proto kernel scope link src 10.250.0.1",
-        f"{APP} dev br-bbbbbbbbbbbb proto kernel scope link src 10.251.0.1",
-        f"{EDGE} via 192.168.1.1 dev eth0",
-    ]
+    routes = [*_owned_routes(), f"{EDGE} via 192.168.1.1 dev eth0"]
     networks = [_owned_edge_network(), _owned_app_network()]
 
     legacy_result = _run_preflight(
