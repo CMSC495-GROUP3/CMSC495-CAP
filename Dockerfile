@@ -14,7 +14,9 @@ COPY policy_assistant/ policy_assistant/
 
 EXPOSE 8000
 
-# --proxy-headers makes request.client the real caller rather than the Nginx
-# container, which the rate limiter keys on. Only the Compose network can reach
-# this port, so trusting every proxy address is safe.
-CMD ["uvicorn", "policy_assistant.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+# --proxy-headers lets uvicorn honour X-Forwarded-* from a trusted peer so the
+# rate limiter and failed-login log see the external client Nginx resolved,
+# not Nginx's own container IP. Trust is NOT "*": uvicorn reads
+# FORWARDED_ALLOW_IPS (Compose sets it to the app network CIDR — Nginx only).
+# A bare local `uvicorn` without that env trusts only 127.0.0.1.
+CMD ["uvicorn", "policy_assistant.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

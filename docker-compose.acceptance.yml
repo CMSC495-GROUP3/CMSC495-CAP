@@ -1,0 +1,31 @@
+# Isolated, credential-free services used by scripts/test_proxy_chain.py.
+# This override never publishes host ports and is not used for deployment.
+services:
+  caddy:
+    ports: !reset []
+
+  web:
+    image: policy-assistant-web:acceptance
+
+  api:
+    image: policy-assistant-api:acceptance
+    env_file: !reset []
+    environment:
+      JWT_SECRET_KEY: acceptance-only-not-a-secret
+      APP_PASSWORD_HASH: ${ACCEPTANCE_PASSWORD_HASH:?set by test_proxy_chain.py}
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: proxy_chain_acceptance
+      LLM_PROVIDER: fake
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:8.0.14
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

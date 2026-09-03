@@ -17,6 +17,7 @@ ssh -i "$SSH_KEY_PATH" "$EC2_HOST" "
   set -e
   cd \"$REMOTE_APP_DIR\"
   git pull origin \"$BRANCH\"
+  bash scripts/preflight-docker-networks.sh
   docker compose down
   docker compose build --no-cache
   docker compose up -d

@@ -13,8 +13,10 @@ RUN npm run build
 # Stage 2 — serve with Nginx
 FROM nginx:alpine
 
-# Drop the default Nginx config and use ours
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# The official image renders /etc/nginx/templates/*.template at startup.
+# docker-compose.yml restricts envsubst to EDGE_SUBNET so Nginx variables such
+# as $remote_addr and $host remain untouched.
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Copy the built React app from Stage 1
 COPY --from=builder /app/dist /usr/share/nginx/html

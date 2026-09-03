@@ -31,13 +31,13 @@ is canned in this mode, so use it to see the UI and the refusal path
 
 Other documents in this repository:
 
-| Read                                                       | For                                                                      |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                         | running against real services, checks, conventions, and the things that bite |
-| [SECURITY.md](SECURITY.md)                                 | reporting a vulnerability and what the Security workflow scans           |
-| [evaluation/README.md](evaluation/README.md)               | the labeled question set and how to score the live system                |
-| [scripts/loadtest/RESULTS.md](scripts/loadtest/RESULTS.md) | throughput measurements and the reasoning behind `THREADPOOL_TOKENS`     |
-| [.agents/skills/CMSC495-CAP/SKILL.md](.agents/skills/CMSC495-CAP/SKILL.md) | the condensed version of all this for coding agents          |
+| Read                                                                       | For                                                                              |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                         | running against real services, checks, conventions, and the things that bite     |
+| [SECURITY.md](SECURITY.md)                                                 | reporting a vulnerability and what the Security workflow scans                   |
+| [evaluation/README.md](evaluation/README.md)                               | the labeled question set and how to score the live system                        |
+| [scripts/loadtest/RESULTS.md](scripts/loadtest/RESULTS.md)                 | throughput measurements and the reasoning behind `THREADPOOL_TOKENS`             |
+| [.agents/skills/CMSC495-CAP/SKILL.md](.agents/skills/CMSC495-CAP/SKILL.md) | the condensed version of all this for coding agents                              |
 
 ## Contents
 
@@ -107,10 +107,20 @@ Docker Compose runs three services on one EC2 instance. Only `caddy` publishes
 ports. It terminates TLS with a Let's Encrypt certificate for `SITE_ADDRESS`
 and forwards to `web`, which builds the React app and serves it through Nginx.
 Nginx also proxies `/api/` to `api` with buffering off, so streamed tokens reach
-the browser as they are produced. `api` is FastAPI with the RAG pipeline.
-OpenAI, MongoDB Atlas, and Amazon S3 are managed services outside Compose. With
-`SITE_ADDRESS` unset, Caddy serves plain HTTP on localhost, which is what
-`make compose` does.
+the browser as they are produced. Client identity for login rate limits follows
+an explicit trust chain on two Compose networks: Caddy (edge) replaces any
+client-supplied `X-Forwarded-*` with the connecting address; Nginx trusts that
+header only from the `edge` CIDR via `real_ip`, then replaces `X-Forwarded-For`
+with the resolved client before talking to the API; Uvicorn trusts forwarding
+headers only from the `app` CIDR via `FORWARDED_ALLOW_IPS`. `api` is FastAPI
+with the RAG pipeline. OpenAI, MongoDB Atlas, and Amazon S3 are managed services
+outside Compose. With `SITE_ADDRESS` unset, Caddy serves plain HTTP on
+localhost, which is what `make compose` does.
+
+The default proxy networks are `10.250.0.0/24` and `10.251.0.0/24`; they avoid
+AWS's default `172.31.0.0/16` VPC. If either overlaps a route or Docker network
+on the target host, set disjoint `EDGE_SUBNET` and `APP_SUBNET` values in
+`.env`. Deployment probes both ranges before stopping the running stack.
 
 ## How a question is answered
 
@@ -433,6 +443,9 @@ locally, plus one variable in `.env`.
    SITE_ADDRESS=policy-assistant.duckdns.org
    ```
 
+   If the default proxy CIDRs overlap host routes or existing Docker networks,
+   also set unused, disjoint `/24` values for `EDGE_SUBNET` and `APP_SUBNET`.
+
 5. Start the stack:
 
    ```bash
@@ -460,6 +473,7 @@ client runs on the instance.
 make check                          # tests, lint, types, and build; what CI runs
 .venv/bin/python -m pytest          # the Python suite, about a second
 .venv/bin/python -m pytest --cov    # with coverage; CI fails under 80%
+make acceptance                     # real container proxy/rate-limit chain
 ```
 
 The suite runs the real application with its external services replaced, the

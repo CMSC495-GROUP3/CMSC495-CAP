@@ -1,9 +1,14 @@
+# Stable, deploy-overridable Compose CIDRs (not container IPs). The anchors keep
+# Docker IPAM and both proxy trust lists sourced from the same values. Override
+# these defaults when either range overlaps a host route or Docker network.
+x-edge-subnet: &edge-subnet "${EDGE_SUBNET:-10.250.0.0/24}"
+x-app-subnet: &app-subnet "${APP_SUBNET:-10.251.0.0/24}"
+
 services:
 
   # TLS termination. Caddy obtains and renews a Let's Encrypt certificate for
-  # SITE_ADDRESS and forwards everything to Nginx on the internal network. With
-  # SITE_ADDRESS unset it serves plain HTTP on localhost, which is what
-  # `make compose` uses.
+  # SITE_ADDRESS and forwards to Nginx on the edge network. With SITE_ADDRESS
+  # unset it serves plain HTTP on localhost, which is what `make compose` uses.
   caddy:
     image: caddy:2-alpine
     ports:
@@ -20,6 +25,8 @@ services:
       - caddy_config:/config
     depends_on:
       - web
+    networks:
+      - edge
     restart: unless-stopped
 
   web:
@@ -27,9 +34,19 @@ services:
       # Self-contained context — the build needs nothing from the parent
       context: web
       dockerfile: Dockerfile
-    # Not published. Caddy reaches Nginx on port 80 over the Compose network.
+    # Not published. Caddy reaches Nginx on port 80 over the edge network;
+    # Nginx reaches the API on port 8000 over the app network.
     depends_on:
       - api
+    environment:
+      # The Nginx image templates only this variable into set_real_ip_from.
+      # The filter prevents envsubst from consuming Nginx variables such as
+      # $remote_addr and $host.
+      EDGE_SUBNET: *edge-subnet
+      NGINX_ENVSUBST_FILTER: "^EDGE_SUBNET$"
+    networks:
+      - edge
+      - app
     restart: unless-stopped
 
   api:
@@ -39,9 +56,28 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      # Uvicorn ProxyHeadersMiddleware trust list. Matches networks.app below
+      # so only Nginx (the app-network peer) can set client identity — never
+      # Caddy, and never an external caller. Never set this to *.
+      FORWARDED_ALLOW_IPS: *app-subnet
     # Not published. Nginx proxies /api/ to this container on port 8000.
+    networks:
+      - app
     restart: unless-stopped
 
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  # Public edge: Caddy ↔ Nginx. Nginx real_ip trusts this CIDR only.
+  edge:
+    ipam:
+      config:
+        - subnet: *edge-subnet
+  # Private app: Nginx ↔ Uvicorn. Uvicorn trusts this CIDR only.
+  app:
+    ipam:
+      config:
+        - subnet: *app-subnet
