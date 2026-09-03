@@ -27,7 +27,7 @@ setup: ## One-time: create .venv, install Python and Node dependencies
 	cd $(WEB) && npm install
 
 stub: ## Run the API on :8000 with a fake model and in-memory Mongo (no accounts needed)
-	APP_PASSWORD_HASH="$$($(PY) -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('$(DEV_PASSWORD)'))")" \
+	APP_PASSWORD_HASH="$$($(PY) -c "import bcrypt; print(bcrypt.hashpw(b'$(DEV_PASSWORD)', bcrypt.gensalt()).decode())")" \
 	FAKE_PASSAGE_SCORE=$(FAKE_SCORE) FAKE_DB_LATENCY_MS=0 \
 	$(VENV)/bin/uvicorn scripts.loadtest.server:app --port 8000 --log-level warning
 

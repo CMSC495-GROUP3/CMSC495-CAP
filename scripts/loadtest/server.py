@@ -40,9 +40,14 @@ Real traffic sits between the two, weighted by the actual refusal rate.
 import os
 import time
 
+import bcrypt
+
 # Must be set before importing main, which validates them at import.
 os.environ.setdefault("JWT_SECRET_KEY", "loadtest-secret-not-for-real-use")
 os.environ.setdefault("MONGODB_URI", "mongodb://stubbed-never-contacted")
+# main also checks that this is a bcrypt hash. `make stub` sets a real one;
+# run.py mints its own JWT and never logs in, so any valid hash will do.
+os.environ.setdefault("APP_PASSWORD_HASH", bcrypt.hashpw(b"loadtest", bcrypt.gensalt(4)).decode())
 os.environ.setdefault("LLM_PROVIDER", "fake")
 os.environ.pop("APP_ENV", None)  # FakeProvider refuses to run as production
 

@@ -52,7 +52,7 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
 2. Generate the two secrets:
    ```bash
    openssl rand -hex 32                                   # JWT_SECRET_KEY
-   .venv/bin/python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('your-password'))"   # APP_PASSWORD_HASH
+   .venv/bin/python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"   # APP_PASSWORD_HASH
    ```
    A bcrypt hash contains `$`. Paste it into `.env` with an editor, not `echo`.
 3. Load the corpus, then create the vector index in the Atlas UI (the README's
@@ -198,8 +198,6 @@ covers `.env`; the rest is on you.
   through `create_index`; drop the index by hand or run `collMod` first.
 - **Changing the embedding model** changes the vector dimensions, which are
   baked into the Atlas index. Re-run ingestion and recreate the index.
-- **`bcrypt` is pinned to 4.3.0** in `requirements/api.txt` because `passlib` breaks on 5.x. Do not bump
-  it without replacing `passlib`.
 - **`typescript` stays on 6.0.x** in `web/package.json` because `typescript-eslint`
   pins its peer to `<6.1.0`, so `npm ci` refuses 7.x. Dependabot ignores the
   7.x line; lift that in `.github/dependabot.yml` once `typescript-eslint`

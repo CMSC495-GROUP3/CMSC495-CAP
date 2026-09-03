@@ -4,7 +4,7 @@
 version: 2
 updates:
   # One entry covers every file under requirements/. Separate entries per
-  # file produced duplicate PRs and, worse, one without the bcrypt exception.
+  # file produced duplicate PRs.
   - package-ecosystem: pip
     directory: /requirements
     schedule:
@@ -14,10 +14,6 @@ updates:
       python:
         patterns: ["*"]
     labels: [dependencies]
-    ignore:
-      # passlib 1.7.4 breaks on bcrypt 5.x; see requirements/api.txt.
-      - dependency-name: bcrypt
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /web

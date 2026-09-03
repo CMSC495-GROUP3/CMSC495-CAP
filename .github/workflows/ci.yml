@@ -164,16 +164,17 @@ jobs:
           cache-to: type=gha,scope=web,mode=max
       - name: API image imports the application
         # pymongo connects lazily, so importing main needs no database. The
-        # values are placeholders; nothing here is a real credential.
+        # values are placeholders; nothing here is a real credential. main
+        # checks the shape of APP_PASSWORD_HASH at import, so it is minted
+        # inside the container rather than committed as a literal.
         run: >
           docker run --rm
           -e JWT_SECRET_KEY=ci-placeholder
-          -e APP_PASSWORD_HASH=ci-placeholder
           -e MONGODB_URI=mongodb://127.0.0.1:1
           -e MONGODB_DB=ci
           -e LLM_PROVIDER=fake
           policy-assistant-api:ci
-          python -c "import policy_assistant.api.main; print('API image imports cleanly')"
+          python -c "import bcrypt, os; os.environ['APP_PASSWORD_HASH'] = bcrypt.hashpw(b'ci', bcrypt.gensalt(4)).decode(); import policy_assistant.api.main; print('API image imports cleanly')"
       - name: Compose file is valid
         run: |
           cp .env.example .env

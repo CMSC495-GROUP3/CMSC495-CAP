@@ -307,7 +307,7 @@ Create a virtual environment and generate the shared password hash:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements/dev.txt
-python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('replace-this-password'))"
+python -c "import bcrypt; print(bcrypt.hashpw(b'replace-this-password', bcrypt.gensalt()).decode())"
 ```
 
 Store only the hash in `APP_PASSWORD_HASH`. Note that a `$` in a bcrypt hash is

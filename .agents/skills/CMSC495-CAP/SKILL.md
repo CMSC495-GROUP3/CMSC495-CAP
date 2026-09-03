@@ -19,7 +19,7 @@ Fix this file in the same PR.
 
 | Layer | What | Where |
 |---|---|---|
-| API | FastAPI, uvicorn, slowapi rate limiting, JWT via python-jose, passlib+bcrypt | `policy_assistant/api/` |
+| API | FastAPI, uvicorn, slowapi rate limiting, JWT via python-jose, bcrypt | `policy_assistant/api/` |
 | RAG pipeline | OpenAI embeddings and chat, LangChain text splitters, pymongo | `policy_assistant/rag/` |
 | Storage | MongoDB Atlas (passages, conversations, escalations, caches, query logs), S3 for raw documents | `policy_assistant/rag/mongo.py`, `policy_assistant/api/db.py` |
 | Web app | React 19, TypeScript (strict, no unused locals), Vite, Tailwind 4, react-router, axios | `web/` |
@@ -172,8 +172,6 @@ cost someone time.
   with `IndexOptionsConflict`. Drop the index or run `collMod` first.
 - **Changing the embedding model** changes vector dimensions. Re-run
   ingestion and recreate the Atlas index.
-- **`bcrypt` stays on 4.x.** passlib 1.7.4 cannot load 5.x. Dependabot is
-  configured to skip that major; do not accept it by hand.
 - **No gunicorn `--preload`.** `MongoClient` is not fork-safe and the
   collection handles bind at import. `uvicorn --workers N` is fine.
 - **`LLM_PROVIDER=fake` refuses to start under `APP_ENV=production`.** That
