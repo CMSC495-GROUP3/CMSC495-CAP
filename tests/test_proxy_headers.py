@@ -20,7 +20,9 @@ import logging
 import re
 from pathlib import Path
 
+import httpx
 import pytest
+import yaml
 from conftest import TEST_PASSWORD
 from fastapi.testclient import TestClient
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -43,7 +45,7 @@ def _uvicorn_client(*, peer: tuple[str, int], trusted_hosts: str = DOCKER_POOL_C
     )
 
 
-def _failed_login(client: TestClient, *, forwarded_for: str | None = None) -> object:
+def _failed_login(client: TestClient, *, forwarded_for: str | None = None) -> httpx.Response:
     headers = {"X-Forwarded-For": forwarded_for} if forwarded_for is not None else None
     return client.post("/api/auth/login", json={"password": "wrong"}, headers=headers)
 
@@ -150,26 +152,16 @@ def test_dockerfile_does_not_trust_every_forwarded_ip():
 
 
 def test_compose_trusts_docker_pool_and_keeps_api_off_edge():
-    compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert 'FORWARDED_ALLOW_IPS: "172.16.0.0/12,192.168.0.0/16"' in compose
-    assert "EDGE_SUBNET" not in compose
-    assert "APP_SUBNET" not in compose
-    assert "ipam:" not in compose
-    assert re.search(r"(?m)^  edge:\s*$", compose)
-    assert re.search(r"(?m)^  app:\s*$", compose)
-    assert re.search(r"(?ms)^  caddy:.*?networks:\n      - edge\n", compose)
-    assert re.search(r"(?ms)^  web:.*?networks:\n      - edge\n      - app\n", compose)
-    api_networks = re.search(
-        r"(?m)^  api:(?:\n(?!  [a-z]).*)*\n    networks:\n((?:      - [^\n]+\n)+)",
-        compose,
-    )
-    assert api_networks is not None
-    assert api_networks.group(1).strip() == "- app"
-    web_block = re.search(r"(?ms)^  web:(.*?)(?=^  api:)", compose)
-    api_block = re.search(r"(?ms)^  api:(.*?)(?=^volumes:)", compose)
-    assert web_block is not None and "ports:" not in web_block.group(1)
-    assert api_block is not None and "ports:" not in api_block.group(1)
-    assert re.search(r"(?ms)^  caddy:.*?ports:\n", compose)
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    services = compose["services"]
+    assert services["api"]["environment"]["FORWARDED_ALLOW_IPS"] == DOCKER_POOL_CIDR
+    assert set(compose["networks"]) == {"edge", "app"}
+    assert services["caddy"]["networks"] == ["edge"]
+    assert services["web"]["networks"] == ["edge", "app"]
+    assert services["api"]["networks"] == ["app"]
+    assert "ports" in services["caddy"]
+    assert "ports" not in services["web"]
+    assert "ports" not in services["api"]
 
 
 @pytest.fixture(autouse=True)
