@@ -1,9 +1,9 @@
 # Python
 venv/
 .venv/
-__pycache__/
-*.pyc
-*.pyo
+**/__pycache__/
+**/*.pyc
+**/*.pyo
 .env
 
 # Web app (not needed in the API build context)
@@ -20,4 +20,4 @@ Caddyfile
 # Git / IDE / docs
 .git/
 .gitignore
-*.md
+**/*.md
