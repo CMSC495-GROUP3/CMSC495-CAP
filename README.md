@@ -110,9 +110,10 @@ Nginx also proxies `/api/` to `api` with buffering off, so streamed tokens reach
 the browser as they are produced. Client identity for login rate limits follows
 an explicit trust chain on two Compose networks: Caddy (edge) replaces any
 client-supplied `X-Forwarded-*` with the connecting address; Nginx trusts that
-header only from Docker's default address pools (`172.16.0.0/12` and `192.168.0.0/16`) via `real_ip`,
-then replaces `X-Forwarded-For` with the resolved client before talking to the
-API; Uvicorn trusts the same pools via `FORWARDED_ALLOW_IPS`. Only Caddy
+header only from Docker's default address pools (`172.16.0.0/12` and
+`192.168.0.0/16`) via `real_ip`, then replaces `X-Forwarded-For` with the
+resolved client before talking to the API; Uvicorn trusts the same pools
+via `FORWARDED_ALLOW_IPS`. Only Caddy
 publishes host ports; Nginx and the API stay internal. `api` is FastAPI with
 the RAG pipeline. OpenAI, MongoDB Atlas, and Amazon S3 are managed services
 outside Compose. With `SITE_ADDRESS` unset, Caddy serves plain HTTP on
@@ -478,8 +479,9 @@ serving and that client addresses reach the API the way the trust chain intends
    curl -s -o /dev/null -w '%{http_code}\n' https://policy-assistant.duckdns.org/api/health
    ```
 
-2. Both Compose networks sit inside `172.16.0.0/12`, which is the range Nginx
-   and Uvicorn trust, and the API container carries the trust variable:
+2. Both Compose networks sit inside either `172.16.0.0/12` or
+   `192.168.0.0/16` (the two ranges Nginx and Uvicorn trust), and the API
+   container carries the trust variable:
 
    ```bash
    ssh ubuntu@policy-assistant.duckdns.org '
@@ -489,9 +491,9 @@ serving and that client addresses reach the API the way the trust chain intends
        --format "{{range .Config.Env}}{{println .}}{{end}}" | grep FORWARDED'
    ```
 
-   A subnet outside that range means Docker's first address pool was exhausted
-   on the host. The stack still runs, but every client shares one login
-   rate-limit bucket until the pool is fixed.
+   A subnet outside both trusted ranges indicates a custom Docker
+   `default-address-pools` configuration. Clients share a rate-limit
+   bucket until the configured pool and trust list agree.
 
 3. The API log shows the external client, not a container address. Send one
    request with a forged header, then read the log:

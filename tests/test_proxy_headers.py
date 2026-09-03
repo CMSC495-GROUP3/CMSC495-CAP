@@ -60,9 +60,13 @@ def test_untrusted_source_cannot_make_uvicorn_accept_forwarded_identity(caplog):
     assert "1.2.3.4" not in caplog.text
 
 
-def test_trusted_nginx_replace_header_is_honoured(caplog):
-    """After Nginx replace, Uvicorn on the Docker pool uses the resolved client."""
-    client = _uvicorn_client(peer=NGINX_PEER)
+@pytest.mark.parametrize(
+    "peer",
+    [NGINX_PEER, ("192.168.16.4", 50000)],
+)
+def test_trusted_nginx_replace_header_is_honoured(peer, caplog):
+    """After Nginx replace, Uvicorn on both Docker pools uses the resolved client."""
+    client = _uvicorn_client(peer=peer)
     limiter.enabled = True
     limiter.reset()
     with caplog.at_level(logging.WARNING, logger="policy_assistant.api.routes.auth"):
