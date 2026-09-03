@@ -1,0 +1,6 @@
+# Build context is web/, so the root .dockerignore does not apply here.
+# node_modules/ must stay out or COPY . . overwrites the npm ci install
+# with the host's platform-specific tree.
+node_modules/
+dist/
+.vite/
