@@ -57,12 +57,30 @@ cidrs_overlap() {
   ((left_start <= right_end && right_start <= left_end))
 }
 
+# Capture stdout from a required inventory command. On nonzero exit, print a
+# sanitized error and return failure. Do not rely on process substitution or
+# set -e to propagate producer failures into while-read loops.
+require_inventory() {
+  local __dest="$1"
+  local __operation="$2"
+  shift 2
+  local __status=0
+  local __output=""
+  __output="$("$@" 2>/dev/null)" || __status=$?
+  if ((__status != 0)); then
+    printf 'ERROR: failed to %s.\n' "$__operation" >&2
+    return 1
+  fi
+  printf -v "$__dest" '%s' "$__output"
+}
+
 # Project name `docker compose down` will use: COMPOSE_PROJECT_NAME, compose
 # `name:`, `.env`, then the project directory. Do not use working_dir labels.
 resolve_production_compose_project() {
-  local name
+  local name raw_config
+  require_inventory raw_config "run docker compose config" docker compose config || return 1
   name="$(
-    docker compose config | awk '
+    printf '%s\n' "$raw_config" | awk '
       /^name:[[:space:]]*/ {
         sub(/^name:[[:space:]]*/, "")
         gsub(/\r/, "")
@@ -89,41 +107,53 @@ owned_subnet_artifacts() {
   local logical="$1"
   local target="$2"
   local network project network_label subnet full_id bridge
+  local network_list subnet_list
+
+  require_inventory network_list "inventory Docker networks" docker network ls --quiet || return 1
 
   while IFS= read -r network; do
     [[ -n "$network" ]] || continue
-    project="$(
+    # Explicit || return: set -e does not reliably abort while-loop bodies,
+    # especially when this function runs inside command substitution.
+    require_inventory project \
+      "inspect Compose project label on Docker network" \
       docker network inspect \
-        --format '{{index .Labels "com.docker.compose.project"}}' \
-        "$network" 2>/dev/null || true
-    )"
+      --format '{{index .Labels "com.docker.compose.project"}}' \
+      "$network" || return 1
     [[ "$project" == "$PRODUCTION_COMPOSE_PROJECT" ]] || continue
-    network_label="$(
+    require_inventory network_label \
+      "inspect Compose network label on Docker network" \
       docker network inspect \
-        --format '{{index .Labels "com.docker.compose.network"}}' \
-        "$network" 2>/dev/null || true
-    )"
+      --format '{{index .Labels "com.docker.compose.network"}}' \
+      "$network" || return 1
     [[ "$network_label" == "$logical" ]] || continue
+    require_inventory subnet_list \
+      "inspect Docker network subnet" \
+      docker network inspect \
+      --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' \
+      "$network" || return 1
     while IFS= read -r subnet; do
       [[ "$subnet" == "$target" ]] || continue
-      full_id="$(docker network inspect --format '{{.Id}}' "$network")"
-      bridge="$(
+      require_inventory full_id \
+        "inspect Docker network ID" \
+        docker network inspect --format '{{.Id}}' "$network" || return 1
+      require_inventory bridge \
+        "inspect Docker network bridge option" \
         docker network inspect \
-          --format '{{index .Options "com.docker.network.bridge.name"}}' \
-          "$network"
-      )"
+        --format '{{index .Options "com.docker.network.bridge.name"}}' \
+        "$network" || return 1
       if [[ -z "$bridge" ]]; then
         bridge="br-${full_id:0:12}"
       fi
       printf '%s %s\n' "$network" "$bridge"
-    done < <(docker network inspect --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' "$network")
-  done < <(docker network ls --quiet)
+    done <<<"$subnet_list"
+  done <<<"$network_list"
 }
 
-route_entries() {
+format_route_entries() {
   # Print "DEST_CIDR DEV" for every non-default IPv4 route. DEV is empty when
   # the route has no device (for example a via-only or blackhole entry).
-  ip -4 route show table all | awk '
+  awk '
     function is_cidr(value) {
       return value ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?$/
     }
@@ -170,7 +200,10 @@ check_host_routes() {
   local target="$2"
   shift 2
   local -a ignore_bridges=("$@")
-  local route bridge
+  local route bridge route_table route_entries
+
+  require_inventory route_table "inventory host IPv4 routes" ip -4 route show table all || return 1
+  route_entries="$(printf '%s\n' "$route_table" | format_route_entries)"
 
   while read -r route bridge; do
     [[ -n "$route" ]] || continue
@@ -181,7 +214,7 @@ check_host_routes() {
       printf 'ERROR: %s subnet %s overlaps host route %s.\n' "$label" "$target" "$route" >&2
       return 1
     fi
-  done < <(route_entries)
+  done <<<"$route_entries"
 }
 
 check_docker_networks() {
@@ -189,13 +222,20 @@ check_docker_networks() {
   local target="$2"
   shift 2
   local -a ignore_networks=("$@")
-  local network subnet
+  local network subnet network_list subnet_list
+
+  require_inventory network_list "inventory Docker networks" docker network ls --quiet || return 1
 
   while IFS= read -r network; do
     [[ -n "$network" ]] || continue
     if network_is_ignored "$network" "${ignore_networks[@]+"${ignore_networks[@]}"}"; then
       continue
     fi
+    require_inventory subnet_list \
+      "inspect Docker network subnet" \
+      docker network inspect \
+      --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' \
+      "$network" || return 1
     while IFS= read -r subnet; do
       [[ -n "$subnet" ]] || continue
       if cidrs_overlap "$target" "$subnet"; then
@@ -203,8 +243,8 @@ check_docker_networks() {
           "$label" "$target" "$network" "$subnet" >&2
         return 1
       fi
-    done < <(docker network inspect --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' "$network")
-  done < <(docker network ls --quiet)
+    done <<<"$subnet_list"
+  done <<<"$network_list"
 }
 
 check_subnet() {
@@ -213,16 +253,24 @@ check_subnet() {
   local network bridge
   local -a owned_networks=()
   local -a owned_bridges=()
+  local owned_output=""
+  local owned_status=0
 
   # An existing production-owned network is excluded from collision comparisons
   # (and its bridge route is ignored), but unrelated host routes and unrelated
   # Docker networks are still validated. deploy.sh runs this preflight before
   # `docker compose down`, which removes only the default Compose project.
+  # Capture ownership inventory first so producer failures cannot fail open.
+  owned_output="$(owned_subnet_artifacts "$label" "$target")" || owned_status=$?
+  if ((owned_status != 0)); then
+    return "$owned_status"
+  fi
+
   while read -r network bridge; do
     [[ -n "$network" ]] || continue
     owned_networks+=("$network")
     [[ -n "$bridge" ]] && owned_bridges+=("$bridge")
-  done < <(owned_subnet_artifacts "$label" "$target")
+  done <<<"$owned_output"
 
   if ((${#owned_networks[@]} > 0)); then
     printf 'Subnet %s is already owned by this Compose project; excluding owned network from collision checks.\n' \

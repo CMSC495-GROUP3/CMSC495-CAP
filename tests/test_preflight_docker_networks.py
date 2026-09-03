@@ -114,6 +114,7 @@ def _run_preflight(
     app: str = APP,
     project: str = PRODUCTION_PROJECT,
     script: Path | None = None,
+    fail: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bash = _bash()
     python = _python()
@@ -126,10 +127,10 @@ def _run_preflight(
 
     fixture_path = root / "fixture.json"
     target = script or PREFLIGHT
-    fixture_path.write_text(
-        json.dumps({"project": project, "networks": networks, "routes": routes}),
-        encoding="utf-8",
-    )
+    payload: dict = {"project": project, "networks": networks, "routes": routes}
+    if fail is not None:
+        payload["fail"] = fail
+    fixture_path.write_text(json.dumps(payload), encoding="utf-8")
     _install_path_stubs(bin_dir, fixture_path, python)
 
     env = os.environ.copy()
@@ -145,6 +146,20 @@ def _run_preflight(
         text=True,
         check=False,
     )
+
+
+def _assert_inventory_failure(
+    result: subprocess.CompletedProcess[str],
+    *,
+    operation_snippet: str,
+) -> None:
+    """Required inventory failures must fail closed with a useful error."""
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, combined
+    assert "Proxy network preflight passed" not in combined
+    assert f"ERROR: failed to {operation_snippet}" in result.stderr
+    # Collision messages alone are not enough; inventory must be the failure.
+    assert "already owned by this Compose project" not in result.stdout
 
 
 def _compose_labels(project: str, logical: str) -> dict[str, str]:
@@ -382,3 +397,77 @@ def test_legacy_early_return_would_miss_host_route_conflict(tmp_path: Path) -> N
     assert "Proxy network preflight passed" in legacy_result.stdout
     assert fixed_result.returncode != 0, fixed_result.stdout + fixed_result.stderr
     assert "overlaps host route" in fixed_result.stderr
+
+
+def test_inventory_failure_compose_config(tmp_path: Path) -> None:
+    result = _run_preflight(tmp_path, networks=[], routes=[], fail="compose_config")
+    _assert_inventory_failure(result, operation_snippet="run docker compose config")
+
+
+def test_inventory_failure_ip_route(tmp_path: Path) -> None:
+    result = _run_preflight(tmp_path, networks=[], routes=[], fail="ip_route")
+    _assert_inventory_failure(result, operation_snippet="inventory host IPv4 routes")
+
+
+def test_inventory_failure_network_ls(tmp_path: Path) -> None:
+    result = _run_preflight(tmp_path, networks=[], routes=[], fail="network_ls")
+    _assert_inventory_failure(result, operation_snippet="inventory Docker networks")
+
+
+def test_inventory_failure_inspect_project_label(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        networks=[_owned_edge_network(), _owned_app_network()],
+        routes=_owned_routes(),
+        fail="inspect_project_label",
+    )
+    _assert_inventory_failure(
+        result,
+        operation_snippet="inspect Compose project label on Docker network",
+    )
+
+
+def test_inventory_failure_inspect_network_label(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        networks=[_owned_edge_network(), _owned_app_network()],
+        routes=_owned_routes(),
+        fail="inspect_network_label",
+    )
+    _assert_inventory_failure(
+        result,
+        operation_snippet="inspect Compose network label on Docker network",
+    )
+
+
+def test_inventory_failure_inspect_subnet(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        networks=[_owned_edge_network(), _owned_app_network()],
+        routes=_owned_routes(),
+        fail="inspect_subnet",
+    )
+    _assert_inventory_failure(result, operation_snippet="inspect Docker network subnet")
+
+
+def test_inventory_failure_inspect_network_id(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        networks=[_owned_edge_network(), _owned_app_network()],
+        routes=_owned_routes(),
+        fail="inspect_network_id",
+    )
+    _assert_inventory_failure(result, operation_snippet="inspect Docker network ID")
+
+
+def test_inventory_failure_inspect_bridge(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        networks=[_owned_edge_network(), _owned_app_network()],
+        routes=_owned_routes(),
+        fail="inspect_bridge",
+    )
+    _assert_inventory_failure(
+        result,
+        operation_snippet="inspect Docker network bridge option",
+    )
