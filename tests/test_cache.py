@@ -4,6 +4,7 @@ from conftest import FAKE_DB
 
 from policy_assistant.rag import cache
 from policy_assistant.rag.cache import (
+    answer_cache_key,
     bump_corpus_version,
     embed_cached,
     get_cached_answer,
@@ -83,3 +84,24 @@ def test_cache_can_be_disabled(monkeypatch):
     put_cached_answer("q", version, RESULT)
     assert get_cached_answer("q", version) is None
     assert FAKE_DB["answer_cache"].count_documents({}) == 0
+
+
+def test_answer_cache_key_stable_when_config_constant():
+    version = get_corpus_version()
+    assert answer_cache_key("How much PTO?", version) == answer_cache_key(
+        "how much  pto?", version
+    )
+
+
+def test_answer_cache_key_changes_with_similarity_threshold(monkeypatch):
+    version = get_corpus_version()
+    before = answer_cache_key("How much PTO?", version)
+    monkeypatch.setattr(cache, "SIMILARITY_THRESHOLD", 0.0)
+    assert answer_cache_key("How much PTO?", version) != before
+
+
+def test_answer_cache_key_changes_with_retrieval_k(monkeypatch):
+    version = get_corpus_version()
+    before = answer_cache_key("How much PTO?", version)
+    monkeypatch.setattr(cache, "RETRIEVAL_K", 10)
+    assert answer_cache_key("How much PTO?", version) != before

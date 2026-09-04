@@ -55,6 +55,9 @@ VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "vector_index")
 # Tune this against the real corpus before the pilot: too high and legitimate
 # questions get refused, too low and the refusal never fires. Measure by logging
 # top scores for a set of known-answerable and known-unanswerable questions.
+#
+# Changing this (or RETRIEVAL_K) invalidates cached answers via the answer
+# cache key — no need to bump PROMPT_VERSION by hand for a threshold tweak.
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.62"))
 
 # Shown to the user when retrieval falls below the threshold. Deliberately points
