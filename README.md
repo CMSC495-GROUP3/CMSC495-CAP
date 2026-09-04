@@ -347,8 +347,7 @@ the chat pool. The OpenAI client is built with `OPENAI_TIMEOUT_SECONDS` (default
 continuously trickling stream is bounded by `OPENAI_STREAM_DEADLINE_SECONDS`
 (default 90), while `OPENAI_MAX_CONCURRENT_REQUESTS` (default 20) and
 `OPENAI_CAPACITY_WAIT_SECONDS` (default 1) keep provider saturation from
-occupying every application worker. The separate
-holding a thread for the SDK's ten-minute default. Login runs on its own
+occupying every application worker. Login runs on its own
 `LOGIN_THREADPOOL_TOKENS` pool (default 10), so bcrypt still answers when every
 chat slot is occupied. Nginx `proxy_read_timeout` on `/api/` is 90s — above the
 provider timeout plus a follow-up call — so the reverse proxy does not cut a
