@@ -90,10 +90,10 @@
   {
     "id": "answerable_12",
     "category": "answerable",
-    "question": "What is the dress code for the annual company picnic?",
+    "question": "What is the dress code for a normal day in the office?",
     "expected_sources": ["Dress Code and Workplace Appearance Policy"],
     "expected_outcome": "answer",
-    "expected_behavior": "Answer that the everyday business casual standard applies (jeans, sneakers, and t-shirts are fine) and cite the dress code policy."
+    "expected_behavior": "Answer that the standard is business casual and that jeans, sneakers, t-shirts, and casual tops are allowed on a normal office day; cite the dress code policy."
   },
   {
     "id": "unanswerable_01",
