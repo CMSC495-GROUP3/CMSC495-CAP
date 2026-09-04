@@ -506,6 +506,11 @@ is too long to wait:
 EC2_HOST=ubuntu@sourcebook.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
 ```
 
+`SSH_KEY_PATH` must point at the instance's private key. If `~/.ssh/config`
+already names the key for the host, a wrong path only prints a warning and ssh
+uses the configured key, but pass the real path so the script fails loudly when
+the key is missing.
+
 Certificates persist in the `caddy_data` volume across restarts and deploys.
 With an Elastic IP the DuckDNS record never needs to change, so no update
 client runs on the instance.
@@ -515,11 +520,6 @@ name at the Elastic IP first, then edit `SITE_ADDRESS` in `.env` and run
 `docker compose up -d caddy`. Compose sees the changed variable and recreates
 only Caddy, which requests a certificate for the new name as it starts. The
 old name stops answering at once, so tell anyone using it before the switch.
-
-`SSH_KEY_PATH` must point at the instance's private key. If `~/.ssh/config`
-already names the key for the host, a wrong path only prints a warning and ssh
-uses the configured key, but pass the real path so the script fails loudly when
-the key is missing.
 
 ### Checking a deploy
 
