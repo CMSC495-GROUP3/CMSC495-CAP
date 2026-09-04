@@ -55,6 +55,9 @@ Needed for anything touching retrieval quality, ingestion, or the provider.
    .venv/bin/python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"   # APP_PASSWORD_HASH
    ```
    A bcrypt hash contains `$`. Paste it into `.env` with an editor, not `echo`.
+   An optional second password goes in `APP_PASSWORD_HASH_2`, hashed the same
+   way; the README's Configure section, under the hash one-liner, says what that
+   implies before you hand one out.
 3. Load the corpus, then create the vector index in the Atlas UI (the README's
    "Load the corpus" section has the exact JSON). The driver cannot create a
    search index; this step is manual and it is the one people forget.

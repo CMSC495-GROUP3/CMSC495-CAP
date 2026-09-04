@@ -6,6 +6,7 @@ import logging
 import bcrypt
 import pytest
 from conftest import TEST_PASSWORD
+from jose import jwt
 
 from policy_assistant.api.routes import auth as auth_routes
 
@@ -26,6 +27,104 @@ def test_login_issues_a_usable_token(client):
 
 def test_wrong_password_is_rejected(client):
     assert client.post("/api/auth/login", json={"password": "nope"}).status_code == 401
+
+
+SECOND_PASSWORD = "professor-review-password"
+
+
+def _second_hash() -> str:
+    return bcrypt.hashpw(SECOND_PASSWORD.encode(), bcrypt.gensalt(4)).decode()
+
+
+def test_second_password_logs_in_alongside_the_first(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    for password in (TEST_PASSWORD, SECOND_PASSWORD):
+        response = client.post("/api/auth/login", json={"password": password})
+        assert response.status_code == 200, password
+        token = response.json()["access_token"]
+        assert (
+            client.get(
+                "/api/conversations", headers={"Authorization": f"Bearer {token}"}
+            ).status_code
+            == 200
+        )
+    assert client.post("/api/auth/login", json={"password": "nope"}).status_code == 401
+
+
+def test_second_password_is_rejected_when_not_configured(client, monkeypatch):
+    monkeypatch.delenv("APP_PASSWORD_HASH_2", raising=False)
+    assert client.post("/api/auth/login", json={"password": SECOND_PASSWORD}).status_code == 401
+
+
+def test_empty_second_hash_means_one_password(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", "")
+    assert client.post("/api/auth/login", json={"password": TEST_PASSWORD}).status_code == 200
+    assert client.post("/api/auth/login", json={"password": SECOND_PASSWORD}).status_code == 401
+
+
+def test_second_hash_alone_does_not_replace_the_first(client, monkeypatch, caplog):
+    monkeypatch.setenv("APP_PASSWORD_HASH", "")
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    with caplog.at_level(logging.ERROR, logger="policy_assistant.api.routes.auth"):
+        response = client.post("/api/auth/login", json={"password": SECOND_PASSWORD})
+    assert response.status_code == 500
+    assert "APP_PASSWORD_HASH is not configured" in caplog.text
+
+
+def test_malformed_second_hash_is_a_server_error(client, monkeypatch, caplog):
+    # A broken second hash must not quietly fall back to the first password.
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", "not-a-bcrypt-hash")
+    with caplog.at_level(logging.ERROR, logger="policy_assistant.api.routes.auth"):
+        response = client.post("/api/auth/login", json={"password": TEST_PASSWORD})
+    assert response.status_code == 500
+    assert "APP_PASSWORD_HASH_2 is not a valid bcrypt hash" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("password", "variable"),
+    [(TEST_PASSWORD, "APP_PASSWORD_HASH"), (SECOND_PASSWORD, "APP_PASSWORD_HASH_2")],
+)
+def test_login_records_which_password_was_used(client, monkeypatch, caplog, password, variable):
+    # Both passwords open the same door; the log line and the claim are the
+    # only way to tell a reviewer's session from the team's afterwards.
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    with caplog.at_level(logging.INFO, logger="policy_assistant.api.routes.auth"):
+        response = client.post("/api/auth/login", json={"password": password})
+    assert response.status_code == 200
+    claims = jwt.decode(
+        response.json()["access_token"],
+        auth_routes.SECRET_KEY,
+        algorithms=[auth_routes.ALGORITHM],
+    )
+    assert claims["sub"] == "user"
+    assert claims["cred"] == variable
+    assert f"Login with {variable}" in caplog.text
+    assert password not in caplog.text
+
+
+# validate_password_hashes is what main.py runs at import, so these pin the
+# startup rule without re-importing the app.
+def test_startup_rejects_a_malformed_second_hash(monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", "not-a-bcrypt-hash")
+    with pytest.raises(auth_routes.PasswordHashError, match="APP_PASSWORD_HASH_2"):
+        auth_routes.validate_password_hashes()
+
+
+def test_startup_requires_the_first_hash_even_with_a_second(monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH", "")
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    with pytest.raises(auth_routes.PasswordHashError, match="APP_PASSWORD_HASH is not configured"):
+        auth_routes.validate_password_hashes()
+
+
+def test_startup_accepts_one_or_two_well_formed_hashes(monkeypatch):
+    monkeypatch.delenv("APP_PASSWORD_HASH_2", raising=False)
+    assert [name for name, _ in auth_routes.validate_password_hashes()] == ["APP_PASSWORD_HASH"]
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    assert [name for name, _ in auth_routes.validate_password_hashes()] == [
+        "APP_PASSWORD_HASH",
+        "APP_PASSWORD_HASH_2",
+    ]
 
 
 def test_unconfigured_password_is_a_server_error(client, monkeypatch, caplog):
