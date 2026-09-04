@@ -30,8 +30,8 @@ from slowapi.errors import RateLimitExceeded  # noqa: E402
 from policy_assistant.api.db import ensure_indexes  # noqa: E402
 from policy_assistant.api.limiter import limiter  # noqa: E402
 from policy_assistant.api.routes.auth import (  # noqa: E402
-    configured_password_hashes,
-    is_bcrypt_hash,
+    PasswordHashError,
+    validate_password_hashes,
 )
 from policy_assistant.api.routes.auth import router as auth_router  # noqa: E402
 from policy_assistant.api.routes.chat import router as chat_router  # noqa: E402
@@ -45,17 +45,15 @@ from policy_assistant.rag.config import (  # noqa: E402
     THREADPOOL_TOKENS,
 )
 
-# checkpw cannot tell a corrupted hash from a wrong password, so a stray newline
-# in a mounted secret would lock everyone out and log it as failed logins.
-# Refuse to start instead. The optional second hash gets the same treatment:
-# if it is set at all, it has to be right.
-for _name, _value in configured_password_hashes():
-    if not is_bcrypt_hash(_value):
-        raise RuntimeError(
-            f"{_name} is not a bcrypt hash. It must be the full 60-character "
-            "$2b$ string with no surrounding whitespace; see the README for how to "
-            "generate one."
-        )
+# A malformed hash refuses to start rather than locking everyone out; see
+# validate_password_hashes for why. Both variables get the same treatment.
+try:
+    validate_password_hashes()
+except PasswordHashError as exc:
+    raise RuntimeError(
+        f"{exc}. A hash must be the full 60-character $2b$ string with no "
+        "surrounding whitespace; see the README for how to generate one."
+    ) from None
 
 
 @asynccontextmanager

@@ -384,6 +384,14 @@ Either password logs in; both variables are checked at startup and a
 malformed hash in either one stops the server from booting. Leave the second
 unset to accept only one password.
 
+Three things to know before handing one out. Both passwords open the same
+door, so the deployment is exactly as strong as the weaker of the two; do not
+make the second one short because it is temporary. Each successful login logs
+which variable matched and puts that name in the token's `cred` claim, which
+is how to tell a reviewer's session from the team's afterwards. Unsetting the
+variable stops new logins with that password, but tokens already issued live
+for 24 hours, so unset it a day before it has to be dead.
+
 ### 2. Load the corpus
 
 `data/sample-policies/` holds 37 fictional HR documents for demonstration.
