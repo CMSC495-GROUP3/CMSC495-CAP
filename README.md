@@ -518,12 +518,6 @@ make check                          # tests, lint, types, and build; what CI run
 make acceptance                     # real container proxy/rate-limit chain
 ```
 
-`make acceptance` needs Docker Compose 2.24 or later because
-`docker-compose.acceptance.yml` uses `!reset`. Older Compose fails to parse
-the override. The run intentionally leaves two image tags for build-cache
-reuse: `policy-assistant-api:acceptance` and
-`policy-assistant-web:acceptance`.
-
 The suite runs the real application with its external services replaced, the
 same way the load-test server does. MongoDB is an in-memory fake from
 `scripts/loadtest/fakemongo.py`, the model is `LLM_PROVIDER=fake` with every
@@ -542,6 +536,12 @@ everyone who asked the same question next.
 
 Not covered: live calls to AWS, Atlas, or OpenAI, and the React components,
 which `tsc` and ESLint check but no test exercises.
+
+`make acceptance` needs Docker Compose 2.24 or later because
+`docker-compose.acceptance.yml` uses `!reset`. Older Compose fails to parse
+the override. The run intentionally leaves two image tags for build-cache
+reuse: `policy-assistant-api:acceptance` and
+`policy-assistant-web:acceptance`.
 
 CI runs on every PR and push to `main`: ruff, the suite on Python 3.11 through
 3.14 with the coverage floor, a validity check on the evaluation set, ESLint,
