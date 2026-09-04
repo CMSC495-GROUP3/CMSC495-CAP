@@ -139,6 +139,9 @@ ESCALATION_WEBHOOK_TIMEOUT_SECONDS = float(os.getenv("ESCALATION_WEBHOOK_TIMEOUT
 # Initial background attempt plus authenticated retries. Once this many
 # attempts have been recorded, further retries are rejected.
 ESCALATION_WEBHOOK_MAX_ATTEMPTS = int(os.getenv("ESCALATION_WEBHOOK_MAX_ATTEMPTS", "5"))
+# A crashed worker can leave a delivery claim pending. After this interval an
+# authenticated retry may reclaim it. Keep this above the webhook timeout.
+ESCALATION_WEBHOOK_LEASE_SECONDS = int(os.getenv("ESCALATION_WEBHOOK_LEASE_SECONDS", "30"))
 
 # Longest note an employee may attach. It is free text, so it is bounded.
 ESCALATION_NOTE_MAX_LENGTH = int(os.getenv("ESCALATION_NOTE_MAX_LENGTH", "2000"))

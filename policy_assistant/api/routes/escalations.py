@@ -27,7 +27,7 @@ that claims the record before sending so concurrent retries cannot duplicate.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -42,6 +42,7 @@ from policy_assistant.api.routes.deps import require_auth
 from policy_assistant.rag.config import (
     ESCALATION_CONTACT,
     ESCALATION_NOTE_MAX_LENGTH,
+    ESCALATION_WEBHOOK_LEASE_SECONDS,
     ESCALATION_WEBHOOK_MAX_ATTEMPTS,
 )
 
@@ -89,9 +90,51 @@ def _apply_delivery_result(escalation_id: str, success: bool) -> dict | None:
                 "$set": {
                     "delivery_status": "delivered" if success else "failed",
                     "delivery_last_attempt_at": now,
+                    "delivery_claimed_at": None,
                     "updated_at": now,
                 },
                 "$inc": {"delivery_attempts": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+    )
+
+
+def _claim_delivery(escalation_id: str) -> dict | None:
+    """Atomically claim failed, legacy, unclaimed, or stale-pending delivery."""
+    now = datetime.now(UTC)
+    stale_before = now - timedelta(seconds=ESCALATION_WEBHOOK_LEASE_SECONDS)
+    return _public_record(
+        escalations_col.find_one_and_update(
+            {
+                "escalation_id": escalation_id,
+                "$and": [
+                    {
+                        "$or": [
+                            {"delivery_attempts": {"$exists": False}},
+                            {"delivery_attempts": {"$lt": ESCALATION_WEBHOOK_MAX_ATTEMPTS}},
+                        ]
+                    },
+                    {
+                        "$or": [
+                            {"delivery_status": "failed"},
+                            {"delivery_status": {"$exists": False}},
+                            {"delivery_status": "pending", "delivery_claimed_at": None},
+                            {
+                                "delivery_status": "pending",
+                                "delivery_claimed_at": {"$lt": stale_before},
+                            },
+                        ]
+                    },
+                ],
+            },
+            {
+                "$set": {
+                    "delivery_status": "pending",
+                    "delivery_claimed_at": now,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {"delivery_attempts": 0},
             },
             return_document=ReturnDocument.AFTER,
         )
@@ -108,7 +151,10 @@ def _deliver_in_background(record: dict) -> None:
     """
     if not notify.ESCALATION_WEBHOOK_URL:
         return
-    success = notify.deliver_escalation(record)
+    claimed = _claim_delivery(record["escalation_id"])
+    if claimed is None:
+        return
+    success = notify.deliver_escalation(claimed)
     _apply_delivery_result(record["escalation_id"], success)
 
 
@@ -191,6 +237,7 @@ def create_escalation(request: Request, body: CreateEscalationRequest, backgroun
         "delivery_status": "pending",
         "delivery_attempts": 0,
         "delivery_last_attempt_at": None,
+        "delivery_claimed_at": None,
     }
     # insert_one adds _id to the dict it is given; insert a copy so the record
     # returned to the client stays free of it.
@@ -226,23 +273,7 @@ def retry_delivery(request: Request, escalation_id: str):
     the operator sees the updated delivery status; create still uses the
     background path so employees never wait on the webhook.
     """
-    now = datetime.now(UTC)
-    claimed = _public_record(
-        escalations_col.find_one_and_update(
-            {
-                "escalation_id": escalation_id,
-                "delivery_status": "failed",
-                "delivery_attempts": {"$lt": ESCALATION_WEBHOOK_MAX_ATTEMPTS},
-            },
-            {
-                "$set": {
-                    "delivery_status": "pending",
-                    "updated_at": now,
-                },
-            },
-            return_document=ReturnDocument.AFTER,
-        )
-    )
+    claimed = _claim_delivery(escalation_id)
     if claimed is None:
         existing = escalations_col.find_one({"escalation_id": escalation_id}, {"_id": 0})
         if not existing:

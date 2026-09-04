@@ -263,7 +263,12 @@ or returned. The record is already stored, and a webhook outage must not turn a
 successful hand-off into an error. Failed deliveries can be retried with
 `POST /api/escalations/{id}/retry-delivery` up to
 `ESCALATION_WEBHOOK_MAX_ATTEMPTS`, with an atomic claim so concurrent retries
-cannot double-send.
+cannot double-send. Claims older than `ESCALATION_WEBHOOK_LEASE_SECONDS`
+(default 30) can be recovered after a worker interruption, and records created
+before delivery tracking can be claimed as legacy work. Delivery is
+at-least-once: a receiver that accepts a request immediately before the worker
+dies may see the same escalation again, so consumers should deduplicate by
+`escalation_id`.
 
 Whoever handles the queue lists it with `GET /api/escalations?status=open` and
 closes an item with `PATCH /api/escalations/{id}` and a resolution note. There

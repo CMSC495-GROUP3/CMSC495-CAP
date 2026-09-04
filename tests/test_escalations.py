@@ -2,7 +2,7 @@
 
 import json
 import urllib.error
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from conftest import FAKE_DB, make_passages
@@ -416,6 +416,63 @@ class TestDeliveryStatus:
         assert first.json()["delivery_status"] == "delivered"
         assert second.status_code == 409
         assert len(sends) == 1
+
+    def test_unconfigured_pending_delivery_can_be_claimed_after_configuration(
+        self, client, auth, refused, monkeypatch
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(notify, "deliver_escalation", lambda _record: True)
+        retried = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+
+        assert retried.status_code == 200
+        assert retried.json()["delivery_status"] == "delivered"
+        assert retried.json()["delivery_attempts"] == 1
+
+    def test_stale_pending_claim_can_be_recovered(self, client, auth, refused, monkeypatch):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+        FAKE_DB["escalations"].update_one(
+            {"escalation_id": escalation_id},
+            {
+                "$set": {
+                    "delivery_claimed_at": datetime.now(UTC)
+                    - timedelta(seconds=escalations.ESCALATION_WEBHOOK_LEASE_SECONDS + 1)
+                }
+            },
+        )
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(notify, "deliver_escalation", lambda _record: True)
+
+        retried = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+        assert retried.status_code == 200
+        assert retried.json()["delivery_status"] == "delivered"
+
+    def test_legacy_record_without_delivery_fields_can_be_claimed(
+        self, client, auth, refused, monkeypatch
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+        stored = next(
+            doc for doc in FAKE_DB["escalations"]._docs if doc["escalation_id"] == escalation_id
+        )
+        for field in (
+            "delivery_status",
+            "delivery_attempts",
+            "delivery_last_attempt_at",
+            "delivery_claimed_at",
+        ):
+            stored.pop(field, None)
+
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(notify, "deliver_escalation", lambda _record: True)
+        retried = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+
+        assert retried.status_code == 200
+        assert retried.json()["delivery_status"] == "delivered"
+        assert retried.json()["delivery_attempts"] == 1
 
     def test_missing_escalation_retry_is_404(self, client, auth):
         assert (
