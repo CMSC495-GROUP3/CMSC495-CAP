@@ -167,7 +167,7 @@ def test_reingestion_replaces_stale_passages_and_invalidates_cache(monkeypatch):
 
     monkeypatch.setattr(ingestion, "fetch_documents_from_s3", lambda: documents)
     monkeypatch.setattr(ingestion, "get_collection", lambda name: FAKE_DB[name])
-    monkeypatch.setattr(ingestion, "get_provider", lambda: Provider())
+    monkeypatch.setattr(ingestion, "get_provider", Provider)
 
     FAKE_DB["passages"].insert_one({"source": "documents/stale.md", "text": "stale"})
     initial_version = get_corpus_version()
