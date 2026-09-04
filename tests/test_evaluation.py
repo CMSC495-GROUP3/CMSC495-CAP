@@ -18,11 +18,30 @@ def test_dataset_has_required_twenty_case_mix():
         category: sum(case["category"] == category for case in cases)
         for category in {case["category"] for case in cases}
     } == {
-        "answerable": 10,
-        "unanswerable": 4,
+        "answerable": 12,
+        "unanswerable": 2,
         "ambiguous": 3,
         "prompt_injection": 3,
     }
+
+
+def test_corpus_aligned_answerable_labels():
+    """Tuition and dress-code questions stay answerable while those policies exist."""
+    cases = {case["id"]: case for case in load_cases(DATASET)}
+
+    tuition = cases["answerable_11"]
+    assert tuition["category"] == "answerable"
+    assert tuition["expected_outcome"] == "answer"
+    assert tuition["expected_sources"] == [
+        "Tuition Reimbursement and Professional Development Policy"
+    ]
+    assert "tuition" in tuition["question"].lower()
+
+    dress = cases["answerable_12"]
+    assert dress["category"] == "answerable"
+    assert dress["expected_outcome"] == "answer"
+    assert dress["expected_sources"] == ["Dress Code and Workplace Appearance Policy"]
+    assert "dress" in dress["question"].lower()
 
 
 def test_every_case_records_expected_source_and_behavior():

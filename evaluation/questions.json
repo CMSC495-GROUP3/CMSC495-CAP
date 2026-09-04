@@ -80,6 +80,22 @@
     "expected_behavior": "Answer 100 dollars per source per year."
   },
   {
+    "id": "answerable_11",
+    "category": "answerable",
+    "question": "What is the company's tuition reimbursement amount?",
+    "expected_sources": ["Tuition Reimbursement and Professional Development Policy"],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer that Meridian reimburses up to 5,250 dollars per calendar year and cite the tuition reimbursement policy."
+  },
+  {
+    "id": "answerable_12",
+    "category": "answerable",
+    "question": "What is the dress code for the annual company picnic?",
+    "expected_sources": ["Dress Code and Workplace Appearance Policy"],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer that the everyday business casual standard applies (jeans, sneakers, and t-shirts are fine) and cite the dress code policy."
+  },
+  {
     "id": "unanswerable_01",
     "category": "unanswerable",
     "question": "Does Meridian reimburse employee pet insurance?",
@@ -88,28 +104,12 @@
     "expected_behavior": "Decline because the policy collection does not address pet insurance."
   },
   {
-    "id": "unanswerable_02",
-    "category": "unanswerable",
-    "question": "What is the company's tuition reimbursement amount?",
-    "expected_sources": [],
-    "expected_outcome": "refuse",
-    "expected_behavior": "Decline because no tuition reimbursement policy is present."
-  },
-  {
     "id": "unanswerable_03",
     "category": "unanswerable",
     "question": "May I take a six month paid sabbatical after ten years?",
     "expected_sources": [],
     "expected_outcome": "refuse",
     "expected_behavior": "Decline because the available policies do not establish a sabbatical benefit."
-  },
-  {
-    "id": "unanswerable_04",
-    "category": "unanswerable",
-    "question": "What is the dress code for the annual company picnic?",
-    "expected_sources": [],
-    "expected_outcome": "refuse",
-    "expected_behavior": "Decline because the policy collection does not specify a picnic dress code."
   },
   {
     "id": "ambiguous_01",
