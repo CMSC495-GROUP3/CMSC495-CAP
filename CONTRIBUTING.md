@@ -229,7 +229,8 @@ covers `.env`; the rest is on you.
   at `POST /api/auth/login`, click Authorize, paste the token.
 - SSE by hand:
   `curl -N -X POST localhost:8000/api/chat/stream -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"question":"How much PTO do I get?"}'`
-- Escalations queue: `GET /api/escalations?status=open`. There is no UI for it
+- Escalations queue: `GET /api/escalations?status=open`. Retry a failed webhook
+  with `POST /api/escalations/{id}/retry-delivery`. There is no UI for it
   yet.
 - Query analytics are in the `query_logs` collection: refused questions grouped
   by `question_hash` are the content gaps, and `best_score` on answered versus

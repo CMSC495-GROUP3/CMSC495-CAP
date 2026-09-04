@@ -19,6 +19,11 @@ Escalating the same message twice returns the first record rather than
 creating a second. A double click should not file two tickets. The check on
 the message is the fast path; the unique index on (session_id, message_index)
 is what holds when two requests race past it.
+
+Webhook delivery is tracked on the record (`pending` / `delivered` /
+`failed`) and updated after each attempt. Create never waits on the webhook;
+failed deliveries can be retried through an authenticated, bounded endpoint
+that claims the record before sending so concurrent retries cannot duplicate.
 """
 
 import uuid
@@ -27,14 +32,18 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from pymongo import DESCENDING
+from pymongo import DESCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from policy_assistant.api.db import conversations_col, escalations_col
 from policy_assistant.api.limiter import limiter
 from policy_assistant.api.notify import deliver_escalation
 from policy_assistant.api.routes.deps import require_auth
-from policy_assistant.rag.config import ESCALATION_CONTACT, ESCALATION_NOTE_MAX_LENGTH
+from policy_assistant.rag.config import (
+    ESCALATION_CONTACT,
+    ESCALATION_NOTE_MAX_LENGTH,
+    ESCALATION_WEBHOOK_MAX_ATTEMPTS,
+)
 
 router = APIRouter()
 
@@ -60,6 +69,43 @@ class CreateEscalationRequest(BaseModel):
 class UpdateEscalationRequest(BaseModel):
     status: EscalationStatus
     resolution: str | None = Field(None, max_length=ESCALATION_NOTE_MAX_LENGTH)
+
+
+def _public_record(doc: dict | None) -> dict | None:
+    """Drop Mongo's `_id` so API responses stay free of it."""
+    if doc is None:
+        return None
+    doc.pop("_id", None)
+    return doc
+
+
+def _apply_delivery_result(escalation_id: str, success: bool) -> dict | None:
+    """Persist the outcome of one webhook attempt. Never raises."""
+    now = datetime.now(UTC)
+    return _public_record(
+        escalations_col.find_one_and_update(
+            {"escalation_id": escalation_id},
+            {
+                "$set": {
+                    "delivery_status": "delivered" if success else "failed",
+                    "delivery_last_attempt_at": now,
+                    "updated_at": now,
+                },
+                "$inc": {"delivery_attempts": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+    )
+
+
+def _deliver_in_background(record: dict) -> None:
+    """Background task: POST the webhook, then write delivery fields.
+
+    Runs after the employee response is sent. A failure here is recorded on
+    the escalation; it is never raised to the client.
+    """
+    success = deliver_escalation(record)
+    _apply_delivery_result(record["escalation_id"], success)
 
 
 def _escalated_turn(session_id: str, message_index: int) -> tuple[dict, dict]:
@@ -95,6 +141,21 @@ def _existing_escalation(assistant: dict, session_id: str, message_index: int) -
     )
 
 
+def _retry_conflict(existing: dict) -> HTTPException:
+    """Explain why a retry was rejected without revealing delivery internals."""
+    status = existing.get("delivery_status")
+    attempts = existing.get("delivery_attempts", 0)
+    if status == "delivered":
+        detail = "Webhook already delivered."
+    elif status == "pending":
+        detail = "Delivery already in progress."
+    elif attempts >= ESCALATION_WEBHOOK_MAX_ATTEMPTS:
+        detail = "Maximum delivery attempts reached."
+    else:
+        detail = "Delivery cannot be retried in its current state."
+    return HTTPException(status_code=409, detail=detail)
+
+
 @router.post("/escalations", dependencies=[Depends(require_auth)])
 @limiter.limit("5/minute")
 def create_escalation(request: Request, body: CreateEscalationRequest, background: BackgroundTasks):
@@ -122,6 +183,10 @@ def create_escalation(request: Request, body: CreateEscalationRequest, backgroun
         "created_at": now,
         "updated_at": now,
         "resolved_at": None,
+        # Non-secret delivery bookkeeping. The webhook URL is never stored.
+        "delivery_status": "pending",
+        "delivery_attempts": 0,
+        "delivery_last_attempt_at": None,
     }
     # insert_one adds _id to the dict it is given; insert a copy so the record
     # returned to the client stays free of it.
@@ -143,8 +208,46 @@ def create_escalation(request: Request, body: CreateEscalationRequest, backgroun
     )
 
     # Runs after the response is sent. See policy_assistant/api/notify.py.
-    background.add_task(deliver_escalation, record)
+    background.add_task(_deliver_in_background, record)
     return record
+
+
+@router.post("/escalations/{escalation_id}/retry-delivery", dependencies=[Depends(require_auth)])
+@limiter.limit("5/minute")
+def retry_delivery(request: Request, escalation_id: str):
+    """Re-attempt webhook delivery for a failed escalation.
+
+    Claims the record with an atomic failed→pending transition so two
+    concurrent retries cannot both send. The attempt runs in this request so
+    the operator sees the updated delivery status; create still uses the
+    background path so employees never wait on the webhook.
+    """
+    now = datetime.now(UTC)
+    claimed = _public_record(
+        escalations_col.find_one_and_update(
+            {
+                "escalation_id": escalation_id,
+                "delivery_status": "failed",
+                "delivery_attempts": {"$lt": ESCALATION_WEBHOOK_MAX_ATTEMPTS},
+            },
+            {
+                "$set": {
+                    "delivery_status": "pending",
+                    "updated_at": now,
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+    )
+    if claimed is None:
+        existing = escalations_col.find_one({"escalation_id": escalation_id}, {"_id": 0})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Escalation not found.")
+        raise _retry_conflict(existing)
+
+    success = deliver_escalation(claimed)
+    updated = _apply_delivery_result(escalation_id, success)
+    return updated if updated is not None else claimed
 
 
 @router.get("/escalations", dependencies=[Depends(require_auth)])

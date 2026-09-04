@@ -27,6 +27,12 @@ def _matches(doc: dict, query: dict) -> bool:
                     return False
                 if op == "$gte" and not (value is not None and value >= operand):
                     return False
+                if op == "$lt" and not (value is not None and value < operand):
+                    return False
+                if op == "$lte" and not (value is not None and value <= operand):
+                    return False
+                if op == "$gt" and not (value is not None and value > operand):
+                    return False
                 if op == "$regex":
                     import re as _re
 

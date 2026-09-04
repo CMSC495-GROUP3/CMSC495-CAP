@@ -1,21 +1,39 @@
 """Handing a question to a person."""
 
+import json
+import urllib.error
 from datetime import datetime
 
 import pytest
 from conftest import FAKE_DB, make_passages
 from pymongo.errors import DuplicateKeyError
 
+from policy_assistant.api import notify
 from policy_assistant.api.limiter import limiter
 from policy_assistant.api.routes import escalations as escalations
 
 
 @pytest.fixture
 def delivered(monkeypatch) -> list[dict]:
-    """Capture webhook deliveries instead of making them."""
+    """Capture scheduled deliveries without touching delivery status fields."""
     sent: list[dict] = []
-    monkeypatch.setattr(escalations, "deliver_escalation", lambda record: sent.append(record))
+
+    def capture(record):
+        sent.append(record)
+
+    monkeypatch.setattr(escalations, "_deliver_in_background", capture)
     return sent
+
+
+class _FakeWebhookResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+WEBHOOK_URL = "https://hooks.example/test-receiver"
 
 
 @pytest.fixture
@@ -227,4 +245,162 @@ class TestQueue:
                 f"/api/escalations/{escalation_id}", json={"status": "closed"}, headers=auth
             ).status_code
             == 422
+        )
+
+
+class TestDeliveryStatus:
+    """Synthetic webhook receivers only — never contact a real endpoint."""
+
+    def test_create_starts_pending_and_success_marks_delivered(
+        self, client, auth, refused, monkeypatch
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(
+            notify.urllib.request, "urlopen", lambda *a, **k: _FakeWebhookResponse()
+        )
+
+        response = _create(client, auth, refused)
+        assert response.status_code == 200
+        record = response.json()
+        assert record["delivery_status"] == "pending"
+        assert record["delivery_attempts"] == 0
+        assert record["delivery_last_attempt_at"] is None
+        assert WEBHOOK_URL not in response.text
+
+        stored = FAKE_DB["escalations"].find_one({"escalation_id": record["escalation_id"]})
+        assert stored["delivery_status"] == "delivered"
+        assert stored["delivery_attempts"] == 1
+        assert isinstance(stored["delivery_last_attempt_at"], datetime)
+        assert WEBHOOK_URL not in json.dumps(stored, default=str)
+
+    def test_failed_delivery_is_recorded_without_delaying_create(
+        self, client, auth, refused, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+
+        def down(*args, **kwargs):
+            raise urllib.error.URLError("refused")
+
+        monkeypatch.setattr(notify.urllib.request, "urlopen", down)
+
+        response = _create(client, auth, refused)
+        assert response.status_code == 200
+        record = response.json()
+        assert record["delivery_status"] == "pending"
+        assert WEBHOOK_URL not in response.text
+        assert WEBHOOK_URL not in caplog.text
+
+        stored = FAKE_DB["escalations"].find_one({"escalation_id": record["escalation_id"]})
+        assert stored["delivery_status"] == "failed"
+        assert stored["delivery_attempts"] == 1
+
+    def test_retry_failed_delivery_until_success(self, client, auth, refused, monkeypatch):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(
+            notify.urllib.request,
+            "urlopen",
+            lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("down")),
+        )
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+        assert (
+            FAKE_DB["escalations"].find_one({"escalation_id": escalation_id})["delivery_status"]
+            == "failed"
+        )
+
+        monkeypatch.setattr(
+            notify.urllib.request, "urlopen", lambda *a, **k: _FakeWebhookResponse()
+        )
+        retried = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+        assert retried.status_code == 200
+        body = retried.json()
+        assert body["delivery_status"] == "delivered"
+        assert body["delivery_attempts"] == 2
+        assert WEBHOOK_URL not in retried.text
+
+    def test_retry_requires_auth(self, client, auth, refused, monkeypatch):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(
+            notify.urllib.request,
+            "urlopen",
+            lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("down")),
+        )
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+        assert client.post(f"/api/escalations/{escalation_id}/retry-delivery").status_code in (
+            401,
+            403,
+        )
+
+    def test_retry_rejects_delivered_and_exhausted_attempts(
+        self, client, auth, refused, monkeypatch
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(
+            notify.urllib.request, "urlopen", lambda *a, **k: _FakeWebhookResponse()
+        )
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+        assert (
+            client.post(
+                f"/api/escalations/{escalation_id}/retry-delivery", headers=auth
+            ).status_code
+            == 409
+        )
+
+        FAKE_DB["escalations"].update_one(
+            {"escalation_id": escalation_id},
+            {
+                "$set": {
+                    "delivery_status": "failed",
+                    "delivery_attempts": escalations.ESCALATION_WEBHOOK_MAX_ATTEMPTS,
+                }
+            },
+        )
+        exhausted = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+        assert exhausted.status_code == 409
+        assert "Maximum delivery attempts" in exhausted.json()["detail"]
+        assert WEBHOOK_URL not in exhausted.text
+
+    def test_concurrent_retry_only_one_sends(self, client, auth, refused, monkeypatch):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
+        monkeypatch.setattr(
+            notify.urllib.request,
+            "urlopen",
+            lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("down")),
+        )
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+
+        sends: list[dict] = []
+
+        def fake_deliver(record, webhook_url=None):
+            sends.append(record)
+            return True
+
+        monkeypatch.setattr(escalations, "deliver_escalation", fake_deliver)
+
+        real = escalations.escalations_col
+        claimed = {"once": False}
+
+        class RacingCollection:
+            def find_one_and_update(self, query, update, **kwargs):
+                # First claim wins; a concurrent retry sees pending and loses.
+                if query.get("delivery_status") == "failed":
+                    if claimed["once"]:
+                        return None
+                    claimed["once"] = True
+                return real.find_one_and_update(query, update, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+        monkeypatch.setattr(escalations, "escalations_col", RacingCollection())
+
+        first = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+        second = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+        assert first.status_code == 200
+        assert first.json()["delivery_status"] == "delivered"
+        assert second.status_code == 409
+        assert len(sends) == 1
+
+    def test_missing_escalation_retry_is_404(self, client, auth):
+        assert (
+            client.post("/api/escalations/missing/retry-delivery", headers=auth).status_code == 404
         )

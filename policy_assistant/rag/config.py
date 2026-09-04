@@ -136,6 +136,9 @@ ESCALATION_CONTACT = os.getenv("ESCALATION_CONTACT", "People Operations")
 # adapter. Empty disables delivery; the record is still stored.
 ESCALATION_WEBHOOK_URL = os.getenv("ESCALATION_WEBHOOK_URL", "")
 ESCALATION_WEBHOOK_TIMEOUT_SECONDS = float(os.getenv("ESCALATION_WEBHOOK_TIMEOUT_SECONDS", "5"))
+# Initial background attempt plus authenticated retries. Once this many
+# attempts have been recorded, further retries are rejected.
+ESCALATION_WEBHOOK_MAX_ATTEMPTS = int(os.getenv("ESCALATION_WEBHOOK_MAX_ATTEMPTS", "5"))
 
 # Longest note an employee may attach. It is free text, so it is bounded.
 ESCALATION_NOTE_MAX_LENGTH = int(os.getenv("ESCALATION_NOTE_MAX_LENGTH", "2000"))
