@@ -344,6 +344,7 @@ def main(argv: list[str] | None = None) -> int:
         tier, dataset = resolve_dataset(args.tier, args.dataset)
     except ValueError as exc:
         parser.error(str(exc))
+        return 2  # pragma: no cover - argparse exits; keeps static analysis definite
 
     cases = load_cases(dataset)
     if not _confirm_paid_run(tier, len(cases), dataset, assume_yes=args.yes):
