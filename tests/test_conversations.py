@@ -22,8 +22,10 @@ def test_conversation_lifecycle(client, auth):
         == 404
     )
 
-    assert client.delete(f"/api/conversations/{sid}", headers=auth).json() == {"ok": True}
-    assert client.delete(f"/api/conversations/{sid}", headers=auth).status_code == 404
+    deleted = client.delete(f"/api/conversations/{sid}", headers=auth)
+    assert deleted.json() == {"ok": True}
+    deleted_again = client.delete(f"/api/conversations/{sid}", headers=auth)
+    assert deleted_again.status_code == 404
 
 
 def test_projects_group_conversations_and_release_them_on_delete(client, auth):
@@ -44,6 +46,8 @@ def test_projects_group_conversations_and_release_them_on_delete(client, auth):
     assert client.get(f"/api/conversations/{sid}", headers=auth).json()["project_id"] is None
 
     client.patch(f"/api/conversations/{sid}", json={"project_id": pid}, headers=auth)
-    assert client.delete(f"/api/projects/{pid}", headers=auth).json() == {"ok": True}
+    deleted = client.delete(f"/api/projects/{pid}", headers=auth)
+    assert deleted.json() == {"ok": True}
     assert client.get(f"/api/conversations/{sid}", headers=auth).json()["project_id"] is None
-    assert client.delete(f"/api/projects/{pid}", headers=auth).status_code == 404
+    deleted_again = client.delete(f"/api/projects/{pid}", headers=auth)
+    assert deleted_again.status_code == 404
