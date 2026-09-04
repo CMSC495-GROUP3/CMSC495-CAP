@@ -23,8 +23,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Literal
 
-import httpx
-
 from policy_assistant.rag.config import OPENAI_MAX_RETRIES, OPENAI_TIMEOUT_SECONDS
 
 ModelRole = Literal["answer", "utility"]
@@ -104,6 +102,9 @@ class OpenAIProvider(LLMProvider):
     EMBEDDING_DIMENSIONS = int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", "1536"))
 
     def __init__(self) -> None:
+        # Lazy: FakeProvider must import this module without openai/httpx installed
+        # (Docker smoke with LLM_PROVIDER=fake). Keep both imports here.
+        import httpx
         from openai import OpenAI
 
         api_key = os.getenv("OPENAI_API_KEY")
