@@ -56,7 +56,3 @@ These are evaluation measurements, not guarantees of production correctness.
 If a result misses its target, preserve the result and use it to tune chunking,
 retrieval count, or the grounding threshold. Do not rewrite the expected answer
 to make the score look better.
-
-LOCAL DOC HOLD: category counts in the table above remain the main-branch mix.
-Issue #95 updates the answerable/unanswerable split; this PR only changes how
-citations are measured.
