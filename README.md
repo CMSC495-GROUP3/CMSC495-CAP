@@ -1,22 +1,36 @@
-# Sourcebook
+<p align="center">
+  <img src="docs/brand/sourcebook-icon.svg" width="112" height="112" alt="Sourcebook">
+</p>
 
-An internal assistant that answers employee questions about company policy and
-cites the document each answer came from. When the corpus does not cover a
-question it says so and offers to hand the question to a person, instead of
-guessing.
+<h1 align="center">Sourcebook</h1>
 
-Pilot: <https://sourcebook.duckdns.org>. Sign in with the shared
-password; ask the team for it. The instance is not hosted around the clock, so
-a connection timeout means it is off, not broken.
+<p align="center">
+  Answers employee questions about company policy and cites the document each answer came from.<br>
+  When the documents do not cover a question, it says so and hands the question to a person.
+</p>
 
-The name lives in three places: `APP_NAME` in `policy_assistant/rag/config.py`
-and `web/src/config.ts`, and the `<title>` in `web/index.html`. Change all
-three together to rebrand.
+<p align="center">
+  <a href="https://github.com/CMSC495-GROUP3/Sourcebook/actions/workflows/ci.yml"><img src="https://github.com/CMSC495-GROUP3/Sourcebook/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/CMSC495-GROUP3/Sourcebook/actions/workflows/security.yml"><img src="https://github.com/CMSC495-GROUP3/Sourcebook/actions/workflows/security.yml/badge.svg?branch=main" alt="Security"></a>
+  <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab" alt="Python 3.11 to 3.14">
+  <img src="https://img.shields.io/badge/react-19-007ec6" alt="React 19">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-007ec6" alt="MIT license"></a>
+</p>
 
-## Run it in ten minutes
+<p align="center">
+  <a href="https://sourcebook.duckdns.org">Pilot site</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#deployment">Deployment</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-No cloud accounts, API keys, or `.env`. This runs the real application with a
-fake model and an in-memory database. You need Python 3.11+, Node 20+, and
+---
+
+## Quick start
+
+No cloud accounts, API keys, or `.env`. This runs the real application against
+a fake model and an in-memory database. You need Python 3.11+, Node 20+, and
 `make`.
 
 ```bash
@@ -25,19 +39,37 @@ make stub     # terminal 1: API on :8000, fake model, in-memory Mongo
 make web      # terminal 2: React on :5173 with hot reload
 ```
 
-Open <http://localhost:5173> and log in with the password `dev`. Every answer
+Open <http://localhost:5173> and sign in with the password `dev`. Every answer
 is canned in this mode, so use it to see the UI and the refusal path
 (`make stub REFUSE=1`), not to judge retrieval quality.
 
-Other documents in this repository:
+The pilot at <https://sourcebook.duckdns.org> runs against the real services.
+Sign in with the shared password; ask the team for it. The instance is not
+hosted around the clock, so a connection timeout means it is off, not broken.
 
-| Read                                                       | For                                                                      |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                         | running against real services, checks, conventions, and the things that bite |
-| [SECURITY.md](SECURITY.md)                                 | reporting a vulnerability and what the Security workflow scans           |
-| [evaluation/README.md](evaluation/README.md)               | the labeled question set and how to score the live system                |
-| [scripts/loadtest/RESULTS.md](scripts/loadtest/RESULTS.md) | throughput measurements and the reasoning behind `THREADPOOL_TOKENS`     |
-| [.agents/skills/CMSC495-CAP/SKILL.md](.agents/skills/CMSC495-CAP/SKILL.md) | the condensed version of all this for coding agents          |
+## What it does
+
+- **Cites every answer.** Each reply names the policy document it drew from and
+  shows a retrieval-match score, so the reader can check it rather than trust it.
+- **Refuses rather than guesses.** If the best retrieved passage scores below a
+  threshold, no model call is made and the UI says the corpus does not cover
+  the question.
+- **Hands off to a person.** A refusal, or an answer that did not help, can be
+  escalated to People Operations from the same screen with the question and its
+  sources attached.
+- **Learns from its own log.** Every request records what was asked, what was
+  retrieved, and whether it was refused. Refusals grouped by question are the
+  list of documents to write next.
+
+## Documentation
+
+| Read                                                                       | For                                                                          |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                         | running against real services, checks, conventions, and the things that bite |
+| [SECURITY.md](SECURITY.md)                                                 | reporting a vulnerability and what the Security workflow scans               |
+| [evaluation/README.md](evaluation/README.md)                               | the labeled question set and how to score the live system                    |
+| [scripts/loadtest/RESULTS.md](scripts/loadtest/RESULTS.md)                 | throughput measurements and the reasoning behind `THREADPOOL_TOKENS`         |
+| [.agents/skills/CMSC495-CAP/SKILL.md](.agents/skills/CMSC495-CAP/SKILL.md) | the condensed version of all this for coding agents                          |
 
 ## Contents
 
@@ -56,6 +88,7 @@ Other documents in this repository:
 - [Repository layout](#repository-layout)
 - [Known limitations](#known-limitations)
 - [References](#references)
+- [License](#license)
 
 ## The problem
 
@@ -103,21 +136,27 @@ flowchart LR
     REACT -->|"Ask People Operations"| ESC["Escalation record<br/>+ optional webhook"]
 ```
 
-Docker Compose runs three services on one EC2 instance. Only `caddy` publishes
-ports. It terminates TLS with a Let's Encrypt certificate for `SITE_ADDRESS`
-and forwards to `web`, which builds the React app and serves it through Nginx.
-Nginx also proxies `/api/` to `api` with buffering off, so streamed tokens reach
-the browser as they are produced. Client identity for login rate limits follows
-an explicit trust chain on two Compose networks: Caddy (edge) replaces any
-client-supplied `X-Forwarded-*` with the connecting address; Nginx trusts that
-header only from Docker's default address pools (`172.16.0.0/12` and
-`192.168.0.0/16`) via `real_ip`, then replaces `X-Forwarded-For` with the
-resolved client before talking to the API; Uvicorn trusts the same pools
-via `FORWARDED_ALLOW_IPS`. Only Caddy
-publishes host ports; Nginx and the API stay internal. `api` is FastAPI with
-the RAG pipeline. OpenAI, MongoDB Atlas, and Amazon S3 are managed services
-outside Compose. With `SITE_ADDRESS` unset, Caddy serves plain HTTP on
-localhost, which is what `make compose` does.
+Docker Compose runs three services on one EC2 instance. OpenAI, MongoDB Atlas,
+and Amazon S3 are managed services outside Compose.
+
+| Service | Role                                                                                                                                                  |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `caddy` | The only service that publishes ports. Terminates TLS with a Let's Encrypt certificate for `SITE_ADDRESS` and forwards to `web`.                      |
+| `web`   | Builds the React app and serves it through Nginx. Proxies `/api/` to `api` with buffering off, so streamed tokens reach the browser as they are produced. |
+| `api`   | FastAPI with the RAG pipeline. Not published; only Nginx can reach it.                                                                                |
+
+Client identity for login rate limits follows an explicit trust chain across
+two Compose networks:
+
+1. Caddy, at the edge, replaces any client-supplied `X-Forwarded-*` header with
+   the connecting address.
+2. Nginx trusts that header only from Docker's default address pools
+   (`172.16.0.0/12` and `192.168.0.0/16`) via `real_ip`, then rewrites
+   `X-Forwarded-For` to the resolved client before talking to the API.
+3. Uvicorn trusts the same pools via `FORWARDED_ALLOW_IPS`.
+
+With `SITE_ADDRESS` unset, Caddy serves plain HTTP on localhost, which is what
+`make compose` does.
 
 ## How a question is answered
 
@@ -246,11 +285,11 @@ Atlas allows 512 MB on the free tier, and new AWS accounts draw on credits
 rather than twelve free months. Sizing the sample corpus with the chunker the
 ingestion script uses, at 1536 doubles per vector:
 
-|                |                                              |
-| -------------- | -------------------------------------------- |
-| Documents      | 37                                           |
-| Passages       | 142                                          |
-| Vector storage | about 1.7 MB, 0.33% of the 512 MB allowance  |
+|                |                                             |
+| -------------- | ------------------------------------------- |
+| Documents      | 37                                          |
+| Passages       | 142                                         |
+| Vector storage | about 1.7 MB, 0.33% of the 512 MB allowance |
 
 An earlier 11-document corpus measured 0.55 MB in Atlas against 0.58 MB by the
 same arithmetic, so the estimate is close. Storage is not the binding
@@ -477,17 +516,19 @@ locally, plus one variable in `.env`.
    `docker builder prune -f` first; `df -h /` and `docker system df` show
    where the space went.
 
+### Automatic deploys
+
 From then on the instance polls upstream `main` every two minutes. When the
 branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout and acts on
 what changed:
 
-| Changed path | What happens |
-|---|---|
-| `policy_assistant/`, `requirements/`, `Dockerfile` | rebuild and recreate `api` |
-| `web/` | rebuild and recreate `web` |
-| `docker-compose.yml` | rebuild both images, `up` recreates whatever the file changed |
-| `Caddyfile` | `caddy reload` inside the running container; certificate and listeners stay |
-| anything else | nothing |
+| Changed path                                       | What happens                                                                 |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `policy_assistant/`, `requirements/`, `Dockerfile` | rebuild and recreate `api`                                                   |
+| `web/`                                             | rebuild and recreate `web`                                                   |
+| `docker-compose.yml`                               | rebuild both images, `up` recreates whatever the file changed                |
+| `Caddyfile`                                        | `caddy reload` inside the running container; certificate and listeners stay  |
+| anything else                                      | nothing                                                                      |
 
 After a deploy it requests `/api/health` through the `web` container, so the
 probe covers Nginx, Uvicorn, and the hop between them, and it keeps the old
@@ -498,6 +539,9 @@ going green once `main` stops moving. Caddy keeps running through an `api` or
 `sudo journalctl -u auto-deploy.service` shows what the last run did. Run the
 script by hand as `ubuntu`, not under `sudo`; it refuses to run on a checkout
 that is not on `main` or that has local edits.
+
+The script only reacts to git. After editing `.env` on the instance, recreate
+the affected service yourself with `docker compose up -d <service>`.
 
 `scripts/deploy.sh` runs the same script now, over SSH, for when two minutes
 is too long to wait:
@@ -510,6 +554,8 @@ EC2_HOST=ubuntu@sourcebook.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/dep
 already names the key for the host, a wrong path only prints a warning and ssh
 uses the configured key, but pass the real path so the script fails loudly when
 the key is missing.
+
+### Certificates and the public address
 
 Certificates persist in the `caddy_data` volume across restarts and deploys.
 With an Elastic IP the DuckDNS record never needs to change, so no update
@@ -525,7 +571,7 @@ old name stops answering at once, so tell anyone using it before the switch.
 
 The script ends with `docker compose ps`. Three more checks confirm the stack is
 serving and that client addresses reach the API the way the trust chain intends
-(see Architecture).
+(see [Architecture](#architecture)).
 
 1. The site answers over TLS and the health route returns 200:
 
@@ -598,13 +644,14 @@ the override. The run intentionally leaves two image tags for build-cache
 reuse: `policy-assistant-api:acceptance` and
 `policy-assistant-web:acceptance`.
 
-CI runs on every PR and push to `main`: ruff, the suite on Python 3.11 through
-3.14 with the coverage floor, a validity check on the evaluation set, ESLint,
-`tsc`, the Vite build, both Docker images, and shellcheck, hadolint, and
-actionlint. A separate Security workflow runs CodeQL, dependency audits, and a
-secret scan, and repeats every Monday. A Live evaluation workflow, started by
-hand from the Actions tab, scores the labeled question set against the real
-provider and index. CONTRIBUTING.md has the full table.
+| Workflow        | Runs on                            | What it does                                                                                                                                                       |
+| --------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CI              | every PR and push to `main`        | ruff, the suite on Python 3.11 through 3.14 with the coverage floor, a validity check on the evaluation set, ESLint, `tsc`, the Vite build, both Docker images, and shellcheck, hadolint, and actionlint |
+| Security        | every PR and push, and each Monday | CodeQL, dependency audits, and a secret scan                                                                                                                       |
+| PR checks       | every PR                           | title format, description filled in, labels by changed path                                                                                                        |
+| Live evaluation | by hand from the Actions tab       | scores the labeled question set against the real provider and index                                                                                                |
+
+CONTRIBUTING.md has the full table.
 
 ## Document format
 
@@ -655,6 +702,7 @@ scripts/            auto_deploy.sh and its systemd units, deploy.sh, audit.sh, a
                     load-test harness in loadtest/
 evaluation/         20 labeled questions and how to score them
 data/               37 fictional sample policies
+docs/brand/         the Sourcebook icon
 requirements/       base.txt shared; api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)
 pyproject.toml      ruff and pytest settings
 Makefile            setup, stub, web, test, lint, build, compose; `make` lists them
@@ -665,6 +713,10 @@ Caddyfile           TLS termination and reverse proxy in front of Nginx
 .github/            CI, Security, PR-check, and Live evaluation workflows; templates; Dependabot; CODEOWNERS
 .agents/            a skill file describing this repo for coding agents
 ```
+
+The product name lives in three places: `APP_NAME` in
+`policy_assistant/rag/config.py` and `web/src/config.ts`, and the `<title>` in
+`web/index.html`. Change all three together to rebrand.
 
 ## Known limitations
 
