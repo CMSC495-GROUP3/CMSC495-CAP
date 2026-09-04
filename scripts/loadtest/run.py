@@ -22,10 +22,9 @@ import json
 import statistics
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from jose import jwt
 
 QUESTIONS = [
     "How many PTO days do I get in my first year?",
@@ -36,17 +35,17 @@ QUESTIONS = [
 ]
 
 
-def mint_token(secret: str) -> str:
-    """Sign a JWT directly rather than logging in.
+def fetch_token(stream_url: str, password: str) -> str:
+    """Log in once so the token carries whatever claims require_auth expects.
 
-    Avoids needing APP_PASSWORD_HASH configured, and keeps bcrypt verification
-    (deliberately expensive) out of the measurement.
+    One bcrypt check before the run is fine; keeping it out of the timed loop
+    is what matters.
     """
-    return jwt.encode(
-        {"sub": "loadtest", "exp": datetime.now(UTC) + timedelta(hours=1)},
-        secret,
-        algorithm="HS256",
-    )
+    parts = urlsplit(stream_url)
+    login_url = urlunsplit((parts.scheme, parts.netloc, "/api/auth/login", "", ""))
+    response = httpx.post(login_url, json={"password": password}, timeout=30.0)
+    response.raise_for_status()
+    return response.json()["access_token"]
 
 
 class Result:
@@ -163,7 +162,11 @@ async def run_level(url: str, token: str, concurrency: int, run_id: str) -> dict
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8001/api/chat/stream")
-    parser.add_argument("--secret", default="loadtest-secret-not-for-real-use")
+    parser.add_argument(
+        "--password",
+        default="loadtest",
+        help="Shared password the stub/server accepts (default matches server.py).",
+    )
     parser.add_argument("--concurrency", type=int, nargs="+", default=[10, 20, 40, 80, 160])
     parser.add_argument("--label", default="")
     parser.add_argument(
@@ -173,7 +176,7 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    token = mint_token(args.secret)
+    token = fetch_token(args.url, args.password)
     run_id = args.run_id or uuid.uuid4().hex[:8]
 
     print(f"\n  {args.label or 'load test'}  ->  {args.url}   (run id {run_id})\n")

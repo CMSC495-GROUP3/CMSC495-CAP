@@ -46,7 +46,7 @@ import bcrypt
 os.environ.setdefault("JWT_SECRET_KEY", "loadtest-secret-not-for-real-use")
 os.environ.setdefault("MONGODB_URI", "mongodb://stubbed-never-contacted")
 # main also checks that this is a bcrypt hash. `make stub` sets a real one;
-# run.py mints its own JWT and never logs in, so any valid hash will do.
+# run.py logs in with password "loadtest", so the hash must match that word.
 os.environ.setdefault("APP_PASSWORD_HASH", bcrypt.hashpw(b"loadtest", bcrypt.gensalt(4)).decode())
 os.environ.setdefault("LLM_PROVIDER", "fake")
 os.environ.pop("APP_ENV", None)  # FakeProvider refuses to run as production
