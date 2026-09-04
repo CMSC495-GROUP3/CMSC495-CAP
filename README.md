@@ -518,6 +518,12 @@ make check                          # tests, lint, types, and build; what CI run
 make acceptance                     # real container proxy/rate-limit chain
 ```
 
+`make acceptance` needs Docker Compose 2.24 or later because
+`docker-compose.acceptance.yml` uses `!reset`. Older Compose fails to parse
+the override. The run intentionally leaves two image tags for build-cache
+reuse: `policy-assistant-api:acceptance` and
+`policy-assistant-web:acceptance`.
+
 The suite runs the real application with its external services replaced, the
 same way the load-test server does. MongoDB is an in-memory fake from
 `scripts/loadtest/fakemongo.py`, the model is `LLM_PROVIDER=fake` with every
