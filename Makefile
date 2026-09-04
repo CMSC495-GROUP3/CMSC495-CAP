@@ -64,7 +64,7 @@ check: test lint build ## What the CI workflow runs on every PR (audit runs in S
 compose: ## Full stack in Docker against the real services in .env
 	docker compose up --build
 
-acceptance: ## Real Caddy -> Nginx -> Uvicorn client-IP and rate-limit check
+acceptance: ## Real Caddy -> Nginx -> Uvicorn client-IP and rate-limit check (Compose >= 2.24; leaves two :acceptance image tags for cache reuse)
 	$(PY) scripts/test_proxy_chain.py
 
 loadtest: ## Throughput measurement against `make stub`; see scripts/loadtest/RESULTS.md
