@@ -6,6 +6,10 @@
 # this host before the stack starts. The local default, http://localhost, serves
 # plain HTTP with no certificate.
 #
+# scripts/auto_deploy.sh applies a change to this file with `caddy reload`
+# inside the running container, so an edit here takes effect on the next
+# deploy tick without a restart; the certificate and listeners stay up.
+#
 # Trust boundary: Caddy is the public edge. No trusted_proxies are configured,
 # so client-supplied X-Forwarded-* values are ignored and replaced with the
 # connecting client's address before the request reaches Nginx.
