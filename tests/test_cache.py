@@ -88,9 +88,7 @@ def test_cache_can_be_disabled(monkeypatch):
 
 def test_answer_cache_key_stable_when_config_constant():
     version = get_corpus_version()
-    assert answer_cache_key("How much PTO?", version) == answer_cache_key(
-        "how much  pto?", version
-    )
+    assert answer_cache_key("How much PTO?", version) == answer_cache_key("how much  pto?", version)
 
 
 def test_answer_cache_key_changes_with_similarity_threshold(monkeypatch):
