@@ -42,7 +42,7 @@ policy_assistant/   the Python application, one package, absolute imports only
     config.py       every tuning knob, all env-overridable; defaults live here and nowhere else
     llm.py          LLMProvider interface; the only module that knows a vendor
     rag_chain.py    retrieval, grounding gate, prompt, generation
-    cache.py        embedding and answer caches, keyed on PROMPT_VERSION and corpus version
+    cache.py        embedding and answer caches, keyed on prompt, corpus, and retrieval settings
     documents.py    source-format parsing
     embed_documents.py, seed_documents.py   offline ingestion
     evaluation.py   runs and scores evaluation/questions.json
