@@ -29,7 +29,10 @@ from slowapi.errors import RateLimitExceeded  # noqa: E402
 
 from policy_assistant.api.db import ensure_indexes  # noqa: E402
 from policy_assistant.api.limiter import limiter  # noqa: E402
-from policy_assistant.api.routes.auth import is_bcrypt_hash  # noqa: E402
+from policy_assistant.api.routes.auth import (  # noqa: E402
+    configured_password_hashes,
+    is_bcrypt_hash,
+)
 from policy_assistant.api.routes.auth import router as auth_router  # noqa: E402
 from policy_assistant.api.routes.chat import router as chat_router  # noqa: E402
 from policy_assistant.api.routes.conversations import router as conversations_router  # noqa: E402
@@ -44,13 +47,15 @@ from policy_assistant.rag.config import (  # noqa: E402
 
 # checkpw cannot tell a corrupted hash from a wrong password, so a stray newline
 # in a mounted secret would lock everyone out and log it as failed logins.
-# Refuse to start instead.
-if not is_bcrypt_hash(os.environ["APP_PASSWORD_HASH"]):
-    raise RuntimeError(
-        "APP_PASSWORD_HASH is not a bcrypt hash. It must be the full 60-character "
-        "$2b$ string with no surrounding whitespace; see the README for how to "
-        "generate one."
-    )
+# Refuse to start instead. The optional second hash gets the same treatment:
+# if it is set at all, it has to be right.
+for _name, _value in configured_password_hashes():
+    if not is_bcrypt_hash(_value):
+        raise RuntimeError(
+            f"{_name} is not a bcrypt hash. It must be the full 60-character "
+            "$2b$ string with no surrounding whitespace; see the README for how to "
+            "generate one."
+        )
 
 
 @asynccontextmanager

@@ -378,6 +378,12 @@ python -c "import bcrypt; print(bcrypt.hashpw(b'replace-this-password', bcrypt.g
 Store only the hash in `APP_PASSWORD_HASH`. A bcrypt hash contains `$`, which
 most shells interpret, so paste it with a text editor rather than `echo`.
 
+To hand out a second password without sharing the first, for a reviewer or a
+grader, generate its hash the same way and put it in `APP_PASSWORD_HASH_2`.
+Either password logs in; both variables are checked at startup and a
+malformed hash in either one stops the server from booting. Leave the second
+unset to accept only one password.
+
 ### 2. Load the corpus
 
 `data/sample-policies/` holds 37 fictional HR documents for demonstration.
@@ -579,7 +585,7 @@ policy_assistant/   the Python application, one package, absolute imports only
     analytics.py      one query_logs record per request
     notify.py         best-effort webhook delivery for escalations
     routes/           one file per area
-      auth.py           shared-password login, 24-hour JWT, 10 attempts a minute
+      auth.py           shared-password login (one or two), 24-hour JWT, 10 attempts a minute
       chat.py           streaming and non-streaming Q&A; enforces the grounding gate
       conversations.py  saved conversations and their citations
       projects.py       folders that group conversations
@@ -612,7 +618,7 @@ Caddyfile           TLS termination and reverse proxy in front of Nginx
 
 ## Known limitations
 
-- **Authentication is one shared password**, not per-employee accounts, and
+- **Authentication is a shared password** (or two), not per-employee accounts, and
   conversations are not scoped to a user. Fine for a pilot. It is the first
   thing to change before a real deployment.
 - **The similarity threshold is untuned** against a real corpus. See

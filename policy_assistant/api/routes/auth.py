@@ -36,6 +36,24 @@ def is_bcrypt_hash(value: str) -> bool:
     return _BCRYPT_HASH.fullmatch(value) is not None
 
 
+# Every environment variable that may hold an accepted password hash. The first
+# is required; the rest are optional so a second password (a reviewer's, say)
+# can be handed out and rotated without touching the team's. Separate variables
+# rather than one delimited list because a bcrypt hash is full of `$`, which
+# makes a list painful to quote in a .env file.
+PASSWORD_HASH_VARS = ("APP_PASSWORD_HASH", "APP_PASSWORD_HASH_2")
+PRIMARY_PASSWORD_HASH_VAR = PASSWORD_HASH_VARS[0]
+
+
+def configured_password_hashes() -> list[tuple[str, str]]:
+    """(variable name, value) for each password hash variable that is set.
+
+    Unset and empty are the same thing: not configured. Shape is not checked
+    here, since main.py and login() fail differently when it is wrong.
+    """
+    return [(name, value) for name in PASSWORD_HASH_VARS if (value := os.getenv(name, ""))]
+
+
 class LoginRequest(BaseModel):
     password: str
 
@@ -65,16 +83,35 @@ def _encode_candidate(password: str) -> bytes | None:
         return None
 
 
-def _check(candidate: bytes, password_hash: str) -> bool:
+def _check(candidate: bytes, name: str, password_hash: str) -> bool:
     try:
         return bcrypt.checkpw(candidate, password_hash.encode())
     except ValueError:
         logger.exception(
-            "APP_PASSWORD_HASH is not a parseable bcrypt hash (length %d, prefix %r)",
+            "%s is not a parseable bcrypt hash (length %d, prefix %r)",
+            name,
             len(password_hash),
             password_hash[:4],
         )
         raise _not_configured() from None
+
+
+def _password_hashes() -> list[tuple[str, str]]:
+    """The hashes login may accept, or a 500 if any configured one is broken."""
+    hashes = configured_password_hashes()
+    if not any(name == PRIMARY_PASSWORD_HASH_VAR for name, _ in hashes):
+        logger.error("%s is not configured", PRIMARY_PASSWORD_HASH_VAR)
+        raise _not_configured()
+    for name, value in hashes:
+        if not is_bcrypt_hash(value):
+            logger.error(
+                "%s is not a valid bcrypt hash (length %d, prefix %r)",
+                name,
+                len(value),
+                value[:4],
+            )
+            raise _not_configured()
+    return hashes
 
 
 def create_access_token(data: dict, expires_delta: timedelta) -> str:
@@ -86,20 +123,14 @@ def create_access_token(data: dict, expires_delta: timedelta) -> str:
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 def login(request: Request, body: LoginRequest):
-    password_hash = os.getenv("APP_PASSWORD_HASH", "")
-    if not password_hash:
-        logger.error("APP_PASSWORD_HASH is not configured")
-        raise _not_configured()
-    if not is_bcrypt_hash(password_hash):
-        logger.error(
-            "APP_PASSWORD_HASH is not a valid bcrypt hash (length %d, prefix %r)",
-            len(password_hash),
-            password_hash[:4],
-        )
-        raise _not_configured()
+    hashes = _password_hashes()
 
     candidate = _encode_candidate(body.password)
-    is_valid = candidate is not None and _check(candidate, password_hash)
+    # Check every hash rather than stopping at the first match, so the response
+    # time does not say which of the configured passwords was tried.
+    is_valid = candidate is not None and any(
+        [_check(candidate, name, value) for name, value in hashes]
+    )
     if not is_valid:
         logger.warning(
             "Failed login attempt from %s", request.client.host if request.client else "unknown"
