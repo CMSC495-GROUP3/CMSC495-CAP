@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/DanielTsang26/CMSC495-CAP/security/advisories/new
+    url: https://github.com/CMSC495-GROUP3/Sourcebook/security/advisories/new
     about: Report privately. Do not open a public issue for a vulnerability; see SECURITY.md.
   - name: Setup or "how do I" question
-    url: https://github.com/DanielTsang26/CMSC495-CAP/blob/main/CONTRIBUTING.md
+    url: https://github.com/CMSC495-GROUP3/Sourcebook/blob/main/CONTRIBUTING.md
     about: CONTRIBUTING.md covers running the app, checking a change, and the things that bite.
