@@ -1,37 +1,81 @@
 """Regression tests for the labeled AI evaluation set and its metrics."""
 
-from pathlib import Path
+from collections import Counter
 
 import pytest
 
 from policy_assistant.rag.evaluation import (
+    EVALUATION_TIERS,
+    SMOKE_CASE_COUNT,
+    SMOKE_CATEGORY_MIXES,
     extract_answer_citations,
     load_cases,
+    resolve_dataset,
+    sample_policy_titles,
     score_results,
+    validate_sources_against_corpus,
 )
 
-DATASET = Path(__file__).resolve().parent.parent / "evaluation" / "questions.json"
+SMOKE_DATASET = EVALUATION_TIERS["smoke"]
+FULL_DATASET = EVALUATION_TIERS["full"]
 
 
-def test_dataset_has_required_twenty_case_mix():
-    cases = load_cases(DATASET)
+def test_smoke_dataset_has_required_twenty_case_mix():
+    cases = load_cases(SMOKE_DATASET)
 
-    assert len(cases) == 20
-    assert len({case["id"] for case in cases}) == 20
-    assert {
+    assert len(cases) == SMOKE_CASE_COUNT
+    assert len({case["id"] for case in cases}) == SMOKE_CASE_COUNT
+    mix = {
         category: sum(case["category"] == category for case in cases)
         for category in {case["category"] for case in cases}
-    } == {
-        "answerable": 12,
-        "unanswerable": 2,
-        "ambiguous": 3,
-        "prompt_injection": 3,
     }
+    # Accept current main (10/4/3/3) or the #95 reconciled mix (12/2/3/3).
+    assert mix in SMOKE_CATEGORY_MIXES
+
+
+def test_full_dataset_covers_every_sample_policy():
+    cases = load_cases(FULL_DATASET)
+    titles = sample_policy_titles()
+    answerable = [case for case in cases if case["category"] == "answerable"]
+    covered = {source for case in answerable for source in case["expected_sources"]}
+
+    assert len(titles) >= 37
+    assert len(answerable) >= len(titles)
+    assert titles <= covered
+
+    counts = Counter(case["category"] for case in cases)
+    assert counts["unanswerable"] >= 1
+    assert counts["ambiguous"] >= 1
+    assert counts["prompt_injection"] >= 1
+
+
+def test_named_tiers_resolve_to_checked_in_datasets():
+    assert resolve_dataset("smoke") == ("smoke", SMOKE_DATASET)
+    assert resolve_dataset("full") == ("full", FULL_DATASET)
+    assert resolve_dataset(None, None) == ("smoke", SMOKE_DATASET)
+
+
+def test_resolve_dataset_rejects_tier_and_path_together(tmp_path):
+    with pytest.raises(ValueError, match="either --tier or --dataset"):
+        resolve_dataset("smoke", tmp_path / "custom.json")
+
+
+def test_expected_sources_must_exist_in_sample_corpus():
+    cases = load_cases(SMOKE_DATASET)
+    validate_sources_against_corpus(cases)
+
+    cases[0] = {
+        **cases[0],
+        "expected_sources": ["Not A Real Policy Title"],
+    }
+    with pytest.raises(ValueError, match="missing from sample corpus"):
+        validate_sources_against_corpus(cases)
+
 
 
 def test_corpus_aligned_answerable_labels():
     """Tuition and dress-code questions stay answerable while those policies exist."""
-    cases = {case["id"]: case for case in load_cases(DATASET)}
+    cases = {case["id"]: case for case in load_cases(SMOKE_DATASET)}
 
     tuition = cases["answerable_11"]
     assert tuition["category"] == "answerable"
@@ -49,13 +93,12 @@ def test_corpus_aligned_answerable_labels():
 
 
 def test_every_case_records_expected_source_and_behavior():
-    cases = load_cases(DATASET)
-
-    for case in cases:
-        assert case["question"].strip()
-        assert isinstance(case["expected_sources"], list)
-        assert case["expected_behavior"].strip()
-        assert case["expected_outcome"] in {"answer", "clarify", "refuse"}
+    for dataset in (SMOKE_DATASET, FULL_DATASET):
+        for case in load_cases(dataset):
+            assert case["question"].strip()
+            assert isinstance(case["expected_sources"], list)
+            assert case["expected_behavior"].strip()
+            assert case["expected_outcome"] in {"answer", "clarify", "refuse"}
 
 
 def test_loader_rejects_duplicate_ids(tmp_path):
@@ -69,6 +112,19 @@ def test_loader_rejects_duplicate_ids(tmp_path):
     )
 
     with pytest.raises(ValueError, match="Duplicate evaluation case id"):
+        load_cases(dataset, require_corpus_titles=False)
+
+
+def test_loader_rejects_unknown_policy_titles(tmp_path):
+    dataset = tmp_path / "unknown.json"
+    dataset.write_text(
+        """[
+          {"id":"q1","category":"answerable","question":"One?","expected_sources":["Missing Policy"],"expected_outcome":"answer","expected_behavior":"Answer."}
+        ]""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing from sample corpus"):
         load_cases(dataset)
 
 
