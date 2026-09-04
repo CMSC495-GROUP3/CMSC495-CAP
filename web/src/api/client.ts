@@ -49,7 +49,13 @@ export function isTokenExpired(token: string): boolean {
 
 function isLoginRequest(url: string | undefined): boolean {
   if (!url) return false
-  return url.includes(LOGIN_PATH)
+  // Match /api/auth/login with optional query string; avoid prefix false-positives.
+  try {
+    const path = url.includes('://') ? new URL(url).pathname : url.split('?')[0]
+    return path === LOGIN_PATH || path.endsWith(LOGIN_PATH)
+  } catch {
+    return url.includes(LOGIN_PATH)
+  }
 }
 
 // Attach JWT to every request
