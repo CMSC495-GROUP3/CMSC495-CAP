@@ -1,0 +1,13 @@
+# Runs scripts/auto_deploy.sh once. auto-deploy.timer starts it every two
+# minutes; `sudo systemctl start auto-deploy.service` runs it now.
+# Install: sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
+[Unit]
+Description=Pull upstream main and rebuild changed services
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/CMSC495-CAP
+ExecStart=/home/ubuntu/CMSC495-CAP/scripts/auto_deploy.sh

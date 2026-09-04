@@ -450,8 +450,26 @@ locally, plus one variable in `.env`.
    Encrypt HTTP challenge on port 80 on the first request. If the challenge
    fails it retries with backoff, and `docker compose logs caddy` shows why.
 
-Later deploys go through `scripts/deploy.sh`, which pulls, rebuilds without
-cache, and restarts the stack over SSH:
+6. Turn on automatic deploys. The checkout must live at
+   `/home/ubuntu/CMSC495-CAP`, which is where the unit file points:
+
+   ```bash
+   sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
+   sudo systemctl enable --now auto-deploy.timer
+   ```
+
+From then on the instance polls upstream `main` every two minutes. When the
+branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout, rebuilds
+only the services whose inputs changed (`api` for `policy_assistant/`,
+`requirements/`, or `Dockerfile`; `web` for `web/`; everything for
+`docker-compose.yml` or `Caddyfile`), restarts those, and probes
+`/api/health`. A merge that touches only documentation rebuilds nothing.
+Caddy keeps running through an `api` or `web` deploy, so the certificate and
+in-flight requests survive. `sudo journalctl -u auto-deploy.service` shows
+what the last run did.
+
+`scripts/deploy.sh` runs the same script now, over SSH, for when two minutes
+is too long to wait:
 
 ```bash
 EC2_HOST=ubuntu@policy-assistant.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
@@ -596,7 +614,8 @@ policy_assistant/   the Python application, one package, absolute imports only
     seed_documents.py, embed_documents.py   offline ingestion
 web/                React 19, TypeScript, Tailwind 4, Vite; served by Nginx
 tests/              pytest suite; conftest.py stubs every external service
-scripts/            deploy.sh, audit.sh, and the load-test harness in loadtest/
+scripts/            auto_deploy.sh and its systemd units, deploy.sh, audit.sh, and the
+                    load-test harness in loadtest/
 evaluation/         20 labeled questions and how to score them
 data/               37 fictional sample policies
 requirements/       base.txt shared; api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)

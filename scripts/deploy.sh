@@ -1,24 +1,16 @@
 #!/bin/bash
-# Deploy helper for a self-managed EC2 host running the Compose stack.
+# Deploy now instead of waiting for the auto-deploy timer on the EC2 host.
+# Runs the same scripts/auto_deploy.sh the timer runs, then prints its log.
 #
 # Usage:
 #   EC2_HOST=ubuntu@policy-assistant.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
-#
-# --no-cache is deliberate: Docker will happily reuse a stale layer when only
-# application source changed, which produces deploys that silently ship old code.
 set -euo pipefail
 
 : "${EC2_HOST:?Set EC2_HOST to the SSH target, for example ubuntu@policy-assistant.duckdns.org}"
 : "${SSH_KEY_PATH:?Set SSH_KEY_PATH to the private-key file}"
-REMOTE_APP_DIR="${REMOTE_APP_DIR:-CMSC495-CAP}"
-BRANCH="${BRANCH:-main}"
 
 ssh -i "$SSH_KEY_PATH" "$EC2_HOST" "
   set -e
-  cd \"$REMOTE_APP_DIR\"
-  git pull origin \"$BRANCH\"
-  docker compose down
-  docker compose build --no-cache
-  docker compose up -d
-  docker compose ps
+  sudo systemctl start auto-deploy.service
+  sudo journalctl -u auto-deploy.service -n 30 --no-pager
 "
