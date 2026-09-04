@@ -35,9 +35,9 @@ from pydantic import BaseModel, Field
 from pymongo import DESCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from policy_assistant.api import notify
 from policy_assistant.api.db import conversations_col, escalations_col
 from policy_assistant.api.limiter import limiter
-from policy_assistant.api.notify import deliver_escalation
 from policy_assistant.api.routes.deps import require_auth
 from policy_assistant.rag.config import (
     ESCALATION_CONTACT,
@@ -102,9 +102,13 @@ def _deliver_in_background(record: dict) -> None:
     """Background task: POST the webhook, then write delivery fields.
 
     Runs after the employee response is sent. A failure here is recorded on
-    the escalation; it is never raised to the client.
+    the escalation; it is never raised to the client. When no webhook is
+    configured, leave the record pending with zero attempts — empty URL is
+    intentional non-delivery, not a failed send.
     """
-    success = deliver_escalation(record)
+    if not notify.ESCALATION_WEBHOOK_URL:
+        return
+    success = notify.deliver_escalation(record)
     _apply_delivery_result(record["escalation_id"], success)
 
 
@@ -245,7 +249,7 @@ def retry_delivery(request: Request, escalation_id: str):
             raise HTTPException(status_code=404, detail="Escalation not found.")
         raise _retry_conflict(existing)
 
-    success = deliver_escalation(claimed)
+    success = notify.deliver_escalation(claimed)
     updated = _apply_delivery_result(escalation_id, success)
     return updated if updated is not None else claimed
 

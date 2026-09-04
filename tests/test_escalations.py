@@ -294,6 +294,23 @@ class TestDeliveryStatus:
         assert stored["delivery_status"] == "failed"
         assert stored["delivery_attempts"] == 1
 
+    def test_empty_webhook_leaves_pending_without_an_attempt(
+        self, client, auth, refused, monkeypatch
+    ):
+        """No receiver configured means store-only, not a failed delivery."""
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
+
+        response = _create(client, auth, refused)
+        assert response.status_code == 200
+        record = response.json()
+        assert record["delivery_status"] == "pending"
+        assert record["delivery_attempts"] == 0
+
+        stored = FAKE_DB["escalations"].find_one({"escalation_id": record["escalation_id"]})
+        assert stored["delivery_status"] == "pending"
+        assert stored["delivery_attempts"] == 0
+        assert stored["delivery_last_attempt_at"] is None
+
     def test_retry_failed_delivery_until_success(self, client, auth, refused, monkeypatch):
         monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", WEBHOOK_URL)
         monkeypatch.setattr(
@@ -374,7 +391,7 @@ class TestDeliveryStatus:
             sends.append(record)
             return True
 
-        monkeypatch.setattr(escalations, "deliver_escalation", fake_deliver)
+        monkeypatch.setattr(notify, "deliver_escalation", fake_deliver)
 
         real = escalations.escalations_col
         claimed = {"once": False}
