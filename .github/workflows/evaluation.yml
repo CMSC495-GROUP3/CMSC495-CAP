@@ -42,11 +42,14 @@ jobs:
       - run: pip install -r requirements/api.txt -r requirements/ingest.txt
       - name: Show selected tier and case count
         id: select
+        env:
+          EVAL_TIER: ${{ inputs.tier }}
         run: |
           python - <<'PY' | tee selection.txt
+          import os
           from policy_assistant.rag.evaluation import load_cases, resolve_dataset
 
-          tier, dataset = resolve_dataset("${{ inputs.tier }}")
+          tier, dataset = resolve_dataset(os.environ["EVAL_TIER"])
           cases = load_cases(dataset)
           print(f"tier={tier}")
           print(f"dataset={dataset}")
@@ -67,9 +70,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB: ${{ secrets.MONGODB_DB }}
+          EVAL_TIER: ${{ inputs.tier }}
         run: |
           python -m policy_assistant.rag.evaluation \
-            --tier "${{ inputs.tier }}" \
+            --tier "$EVAL_TIER" \
             --yes \
             --output evaluation/results.json | tee evaluation-summary.txt
       - name: Summary
