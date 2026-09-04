@@ -87,6 +87,18 @@ REFUSAL_MESSAGE = (
 # changing it, and re-measure rather than guessing.
 THREADPOOL_TOKENS = int(os.getenv("THREADPOOL_TOKENS", "100"))
 
+# Dedicated pool for bcrypt on /api/auth/login. Login is async and runs
+# checkpw through this limiter so a saturated chat pool cannot block sign-in.
+LOGIN_THREADPOOL_TOKENS = int(os.getenv("LOGIN_THREADPOOL_TOKENS", "10"))
+
+# ── OpenAI client ─────────────────────────────────────────────────────────────
+# Bound every provider call. The SDK defaults are a 10-minute timeout and two
+# retries; under a stall that pins THREADPOOL_TOKENS for far longer than a user
+# will wait. read is the streaming bound (idle time between chunks), not total
+# wall time. Surfaced here so llm.py is not the only place that knows the knobs.
+OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
+OPENAI_MAX_RETRIES = int(os.getenv("OPENAI_MAX_RETRIES", "1"))
+
 # ── Caching ───────────────────────────────────────────────────────────────────
 # The product premise is that the same questions get asked repeatedly, so the
 # answer cache is the main lever on both cost and latency. Both caches live in

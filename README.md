@@ -341,6 +341,15 @@ cancellation semantics that are easy to get subtly wrong in a codebase meant to
 be maintained by junior developers. RESULTS.md records that decision with its
 evidence. Revisit it if per-request thread-time grows.
 
+Two related bounds keep a stalled provider from taking the whole site down with
+the chat pool. The OpenAI client is built with `OPENAI_TIMEOUT_SECONDS` (default
+30) and `OPENAI_MAX_RETRIES` (default 1) so a hang fails the request instead of
+holding a thread for the SDK's ten-minute default. Login runs on its own
+`LOGIN_THREADPOOL_TOKENS` pool (default 10), so bcrypt still answers when every
+chat slot is occupied. Nginx `proxy_read_timeout` on `/api/` is 90s — above the
+provider timeout plus a follow-up call — so the reverse proxy does not cut a
+stream that is still legitimately waiting.
+
 The caveat: the harness stubs the model and the database, and real generation
 latency is slower and far more variable than the 2.5 seconds used here. Cost
 and provider rate limits bind well before the server does. At 83 requests per

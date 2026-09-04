@@ -23,6 +23,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Literal
 
+import httpx
+
+from policy_assistant.rag.config import OPENAI_MAX_RETRIES, OPENAI_TIMEOUT_SECONDS
+
 ModelRole = Literal["answer", "utility"]
 
 Message = dict  # {"role": "system" | "user" | "assistant", "content": str}
@@ -108,7 +112,19 @@ class OpenAIProvider(LLMProvider):
                 "OPENAI_API_KEY is required when LLM_PROVIDER=openai. "
                 "Set it in .env — see .env.example."
             )
-        self._client = OpenAI(api_key=api_key)
+        # read bounds idle time between streamed chunks; connect stays short so
+        # a black-holed DNS or TCP handshake fails fast rather than eating a
+        # THREADPOOL_TOKENS slot for the full read timeout.
+        self._client = OpenAI(
+            api_key=api_key,
+            timeout=httpx.Timeout(
+                connect=5.0,
+                read=OPENAI_TIMEOUT_SECONDS,
+                write=OPENAI_TIMEOUT_SECONDS,
+                pool=5.0,
+            ),
+            max_retries=OPENAI_MAX_RETRIES,
+        )
 
     def _model_for(self, role: ModelRole) -> str:
         return self.ANSWER_MODEL if role == "answer" else self.UTILITY_MODEL
