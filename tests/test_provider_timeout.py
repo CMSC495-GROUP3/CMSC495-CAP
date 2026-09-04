@@ -3,17 +3,22 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import anyio.to_thread
 import httpx
 import openai
+import pytest
 from conftest import TEST_PASSWORD
 
 from policy_assistant.api.routes import auth as auth_routes
 from policy_assistant.rag import llm
 from policy_assistant.rag.config import (
     LOGIN_THREADPOOL_TOKENS,
+    OPENAI_CAPACITY_WAIT_SECONDS,
+    OPENAI_MAX_CONCURRENT_REQUESTS,
     OPENAI_MAX_RETRIES,
+    OPENAI_STREAM_DEADLINE_SECONDS,
     OPENAI_TIMEOUT_SECONDS,
 )
 
@@ -49,8 +54,48 @@ def test_openai_client_uses_configured_timeout_and_retries(monkeypatch):
 def test_openai_defaults_match_config():
     assert OPENAI_TIMEOUT_SECONDS == 30.0
     assert OPENAI_MAX_RETRIES == 1
+    assert OPENAI_STREAM_DEADLINE_SECONDS == 90.0
+    assert OPENAI_MAX_CONCURRENT_REQUESTS == 20
+    assert OPENAI_CAPACITY_WAIT_SECONDS == 1.0
     assert LOGIN_THREADPOOL_TOKENS == 10
     assert auth_routes._login_limiter.total_tokens == LOGIN_THREADPOOL_TOKENS
+
+
+def test_provider_capacity_fails_fast_instead_of_filling_app_pool(monkeypatch):
+    provider = llm.OpenAIProvider.__new__(llm.OpenAIProvider)
+    provider._capacity = threading.BoundedSemaphore(1)
+    provider._capacity.acquire()
+    monkeypatch.setattr(llm, "OPENAI_CAPACITY_WAIT_SECONDS", 0)
+
+    with pytest.raises(RuntimeError, match="concurrency limit"), provider._request_slot():
+        pytest.fail("capacity-limited request unexpectedly acquired a slot")
+
+
+def test_stream_has_wall_clock_deadline_and_closes_response(monkeypatch):
+    class _Stream:
+        closed = False
+
+        def __iter__(self):
+            chunk = SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="slow"))]
+            )
+            yield chunk
+
+        def close(self):
+            self.closed = True
+
+    stream = _Stream()
+    completions = SimpleNamespace(create=lambda **_kwargs: stream)
+    provider = llm.OpenAIProvider.__new__(llm.OpenAIProvider)
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    provider._capacity = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(llm, "OPENAI_STREAM_DEADLINE_SECONDS", 1)
+    clock = iter((0.0, 1.1))
+    monkeypatch.setattr(llm.time, "monotonic", lambda: next(clock))
+
+    with pytest.raises(TimeoutError, match="configured deadline"):
+        list(provider.stream([{"role": "user", "content": "test"}]))
+    assert stream.closed is True
 
 
 def test_login_stays_available_when_chat_threads_are_saturated(

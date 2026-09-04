@@ -98,6 +98,12 @@ LOGIN_THREADPOOL_TOKENS = int(os.getenv("LOGIN_THREADPOOL_TOKENS", "10"))
 # wall time. Surfaced here so llm.py is not the only place that knows the knobs.
 OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
 OPENAI_MAX_RETRIES = int(os.getenv("OPENAI_MAX_RETRIES", "1"))
+# A streaming read timeout is idle-between-chunks, not a wall-clock bound.
+# Stop continuously trickling streams at this age and fail excess provider
+# work quickly so it cannot consume every application worker.
+OPENAI_STREAM_DEADLINE_SECONDS = float(os.getenv("OPENAI_STREAM_DEADLINE_SECONDS", "90"))
+OPENAI_MAX_CONCURRENT_REQUESTS = int(os.getenv("OPENAI_MAX_CONCURRENT_REQUESTS", "20"))
+OPENAI_CAPACITY_WAIT_SECONDS = float(os.getenv("OPENAI_CAPACITY_WAIT_SECONDS", "1"))
 
 # ── Caching ───────────────────────────────────────────────────────────────────
 # The product premise is that the same questions get asked repeatedly, so the

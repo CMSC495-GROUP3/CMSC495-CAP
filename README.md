@@ -343,7 +343,11 @@ evidence. Revisit it if per-request thread-time grows.
 
 Two related bounds keep a stalled provider from taking the whole site down with
 the chat pool. The OpenAI client is built with `OPENAI_TIMEOUT_SECONDS` (default
-30) and `OPENAI_MAX_RETRIES` (default 1) so a hang fails the request instead of
+30) and `OPENAI_MAX_RETRIES` (default 1) so an idle hang fails the request. A
+continuously trickling stream is bounded by `OPENAI_STREAM_DEADLINE_SECONDS`
+(default 90), while `OPENAI_MAX_CONCURRENT_REQUESTS` (default 20) and
+`OPENAI_CAPACITY_WAIT_SECONDS` (default 1) keep provider saturation from
+occupying every application worker. The separate
 holding a thread for the SDK's ten-minute default. Login runs on its own
 `LOGIN_THREADPOOL_TOKENS` pool (default 10), so bcrypt still answers when every
 chat slot is occupied. Nginx `proxy_read_timeout` on `/api/` is 90s — above the
