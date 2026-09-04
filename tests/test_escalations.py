@@ -1,6 +1,9 @@
 """Handing a question to a person."""
 
 import json
+import os
+import subprocess
+import sys
 import urllib.error
 from datetime import UTC, datetime, timedelta
 
@@ -386,35 +389,23 @@ class TestDeliveryStatus:
         escalation_id = _create(client, auth, refused).json()["escalation_id"]
 
         sends: list[dict] = []
+        losing_claims: list[dict | None] = []
 
         def fake_deliver(record, webhook_url=None):
             sends.append(record)
+            # The active request still owns a pending claim here. A competing
+            # worker must lose before it reaches the webhook.
+            losing_claims.append(escalations._claim_delivery(escalation_id))
             return True
 
         monkeypatch.setattr(notify, "deliver_escalation", fake_deliver)
-
-        real = escalations.escalations_col
-        claimed = {"once": False}
-
-        class RacingCollection:
-            def find_one_and_update(self, query, update, **kwargs):
-                # First claim wins; a concurrent retry sees pending and loses.
-                if query.get("delivery_status") == "failed":
-                    if claimed["once"]:
-                        return None
-                    claimed["once"] = True
-                return real.find_one_and_update(query, update, **kwargs)
-
-            def __getattr__(self, name):
-                return getattr(real, name)
-
-        monkeypatch.setattr(escalations, "escalations_col", RacingCollection())
 
         first = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
         second = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
         assert first.status_code == 200
         assert first.json()["delivery_status"] == "delivered"
         assert second.status_code == 409
+        assert losing_claims == [None]
         assert len(sends) == 1
 
     def test_unconfigured_pending_delivery_can_be_claimed_after_configuration(
@@ -430,6 +421,21 @@ class TestDeliveryStatus:
         assert retried.status_code == 200
         assert retried.json()["delivery_status"] == "delivered"
         assert retried.json()["delivery_attempts"] == 1
+
+    def test_retry_without_webhook_does_not_mutate_store_only_record(
+        self, client, auth, refused, monkeypatch
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+
+        retried = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
+
+        assert retried.status_code == 409
+        assert retried.json()["detail"] == "Webhook delivery is not configured."
+        stored = FAKE_DB["escalations"].find_one({"escalation_id": escalation_id})
+        assert stored["delivery_status"] == "pending"
+        assert stored["delivery_attempts"] == 0
+        assert stored["delivery_claimed_at"] is None
 
     def test_stale_pending_claim_can_be_recovered(self, client, auth, refused, monkeypatch):
         monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
@@ -449,6 +455,59 @@ class TestDeliveryStatus:
         retried = client.post(f"/api/escalations/{escalation_id}/retry-delivery", headers=auth)
         assert retried.status_code == 200
         assert retried.json()["delivery_status"] == "delivered"
+
+    def test_stale_worker_cannot_complete_after_claim_is_recovered(
+        self, client, auth, refused, monkeypatch
+    ):
+        monkeypatch.setattr(notify, "ESCALATION_WEBHOOK_URL", "")
+        escalation_id = _create(client, auth, refused).json()["escalation_id"]
+
+        first = escalations._claim_delivery(escalation_id)
+        assert first is not None
+        first_claimed_at = datetime.now(UTC) - timedelta(
+            seconds=escalations.ESCALATION_WEBHOOK_LEASE_SECONDS + 1
+        )
+        FAKE_DB["escalations"].update_one(
+            {"escalation_id": escalation_id},
+            {"$set": {"delivery_claimed_at": first_claimed_at}},
+        )
+
+        second = escalations._claim_delivery(escalation_id)
+        assert second is not None
+        second_claimed_at = second["delivery_claimed_at"]
+        assert second_claimed_at != first_claimed_at
+
+        assert escalations._apply_delivery_result(escalation_id, first_claimed_at, False) is None
+        current = FAKE_DB["escalations"].find_one({"escalation_id": escalation_id})
+        assert current["delivery_status"] == "pending"
+        assert current["delivery_claimed_at"] == second_claimed_at
+        assert current["delivery_attempts"] == 0
+
+        updated = escalations._apply_delivery_result(escalation_id, second_claimed_at, True)
+        assert updated is not None
+        assert updated["delivery_status"] == "delivered"
+        assert updated["delivery_attempts"] == 1
+
+    @pytest.mark.parametrize(
+        ("timeout", "lease"),
+        [("30", "30"), ("NaN", "30"), ("Infinity", "30"), ("0", "30"), ("5", "0")],
+    )
+    def test_webhook_timing_must_be_positive_finite_and_lease_longer(self, timeout, lease):
+        env = os.environ.copy()
+        env["ESCALATION_WEBHOOK_TIMEOUT_SECONDS"] = timeout
+        env["ESCALATION_WEBHOOK_LEASE_SECONDS"] = lease
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from policy_assistant.rag import config"],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0
+        assert "ESCALATION_WEBHOOK_" in result.stderr
 
     def test_legacy_record_without_delivery_fields_can_be_claimed(
         self, client, auth, refused, monkeypatch

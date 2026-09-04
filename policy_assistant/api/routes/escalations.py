@@ -80,12 +80,16 @@ def _public_record(doc: dict | None) -> dict | None:
     return doc
 
 
-def _apply_delivery_result(escalation_id: str, success: bool) -> dict | None:
-    """Persist the outcome of one webhook attempt. Never raises."""
+def _apply_delivery_result(escalation_id: str, claimed_at: datetime, success: bool) -> dict | None:
+    """Persist an attempt only while its delivery claim is still current."""
     now = datetime.now(UTC)
     return _public_record(
         escalations_col.find_one_and_update(
-            {"escalation_id": escalation_id},
+            {
+                "escalation_id": escalation_id,
+                "delivery_status": "pending",
+                "delivery_claimed_at": claimed_at,
+            },
             {
                 "$set": {
                     "delivery_status": "delivered" if success else "failed",
@@ -155,7 +159,7 @@ def _deliver_in_background(record: dict) -> None:
     if claimed is None:
         return
     success = notify.deliver_escalation(claimed)
-    _apply_delivery_result(record["escalation_id"], success)
+    _apply_delivery_result(record["escalation_id"], claimed["delivery_claimed_at"], success)
 
 
 def _escalated_turn(session_id: str, message_index: int) -> tuple[dict, dict]:
@@ -273,6 +277,12 @@ def retry_delivery(request: Request, escalation_id: str):
     the operator sees the updated delivery status; create still uses the
     background path so employees never wait on the webhook.
     """
+    if not notify.ESCALATION_WEBHOOK_URL:
+        existing = escalations_col.find_one({"escalation_id": escalation_id}, {"_id": 0})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Escalation not found.")
+        raise HTTPException(status_code=409, detail="Webhook delivery is not configured.")
+
     claimed = _claim_delivery(escalation_id)
     if claimed is None:
         existing = escalations_col.find_one({"escalation_id": escalation_id}, {"_id": 0})
@@ -281,8 +291,11 @@ def retry_delivery(request: Request, escalation_id: str):
         raise _retry_conflict(existing)
 
     success = notify.deliver_escalation(claimed)
-    updated = _apply_delivery_result(escalation_id, success)
-    return updated if updated is not None else claimed
+    updated = _apply_delivery_result(escalation_id, claimed["delivery_claimed_at"], success)
+    if updated is not None:
+        return updated
+    current = escalations_col.find_one({"escalation_id": escalation_id}, {"_id": 0})
+    return _public_record(current) or claimed
 
 
 @router.get("/escalations", dependencies=[Depends(require_auth)])

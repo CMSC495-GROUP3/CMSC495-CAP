@@ -8,6 +8,7 @@ Every value can be overridden with an environment variable so the pilot can be
 retuned without a code change.
 """
 
+import math
 import os
 
 # ── Product identity ──────────────────────────────────────────────────────────
@@ -136,12 +137,18 @@ ESCALATION_CONTACT = os.getenv("ESCALATION_CONTACT", "People Operations")
 # adapter. Empty disables delivery; the record is still stored.
 ESCALATION_WEBHOOK_URL = os.getenv("ESCALATION_WEBHOOK_URL", "")
 ESCALATION_WEBHOOK_TIMEOUT_SECONDS = float(os.getenv("ESCALATION_WEBHOOK_TIMEOUT_SECONDS", "5"))
+if not math.isfinite(ESCALATION_WEBHOOK_TIMEOUT_SECONDS) or ESCALATION_WEBHOOK_TIMEOUT_SECONDS <= 0:
+    raise ValueError("ESCALATION_WEBHOOK_TIMEOUT_SECONDS must be finite and greater than zero")
 # Initial background attempt plus authenticated retries. Once this many
 # attempts have been recorded, further retries are rejected.
 ESCALATION_WEBHOOK_MAX_ATTEMPTS = int(os.getenv("ESCALATION_WEBHOOK_MAX_ATTEMPTS", "5"))
 # A crashed worker can leave a delivery claim pending. After this interval an
 # authenticated retry may reclaim it. Keep this above the webhook timeout.
 ESCALATION_WEBHOOK_LEASE_SECONDS = int(os.getenv("ESCALATION_WEBHOOK_LEASE_SECONDS", "30"))
+if ESCALATION_WEBHOOK_LEASE_SECONDS <= ESCALATION_WEBHOOK_TIMEOUT_SECONDS:
+    raise ValueError(
+        "ESCALATION_WEBHOOK_LEASE_SECONDS must exceed ESCALATION_WEBHOOK_TIMEOUT_SECONDS"
+    )
 
 # Longest note an employee may attach. It is free text, so it is bounded.
 ESCALATION_NOTE_MAX_LENGTH = int(os.getenv("ESCALATION_NOTE_MAX_LENGTH", "2000"))
