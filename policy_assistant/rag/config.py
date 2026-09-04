@@ -11,9 +11,9 @@ retuned without a code change.
 import os
 
 # ── Product identity ──────────────────────────────────────────────────────────
-# The product name is still pending. Change it here and in web/src/config.ts
-# (plus the <title> in web/index.html) to rebrand the whole application.
-APP_NAME = os.getenv("APP_NAME", "Policy Assistant")
+# The product name. Change it here and in web/src/config.ts (plus the <title>
+# in web/index.html) to rebrand the whole application.
+APP_NAME = os.getenv("APP_NAME", "Handbook")
 
 # ── Storage ───────────────────────────────────────────────────────────────────
 # S3 key prefix the ingestion pipeline reads from and the seed script writes to.

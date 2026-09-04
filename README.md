@@ -1,4 +1,4 @@
-# Policy Assistant
+# Handbook
 
 An internal assistant that answers employee questions about company policy and
 cites the document each answer came from. When the corpus does not cover a
@@ -9,9 +9,9 @@ Pilot: <https://policy-assistant.duckdns.org>. Sign in with the shared
 password; ask the team for it. The instance is not hosted around the clock, so
 a connection timeout means it is off, not broken.
 
-The name is a placeholder. To rebrand, change `APP_NAME` in
-`policy_assistant/rag/config.py` and `web/src/config.ts`, and the `<title>` in
-`web/index.html`.
+The name lives in three places: `APP_NAME` in `policy_assistant/rag/config.py`
+and `web/src/config.ts`, and the `<title>` in `web/index.html`. Change all
+three together to rebrand.
 
 ## Run it in ten minutes
 
