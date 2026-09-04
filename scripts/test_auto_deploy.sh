@@ -76,6 +76,17 @@ assert_no_build() {
   fi
 }
 
+assert_not_eq() {
+  local label=$1 unexpected=$2 actual=$3
+  if [ "$unexpected" != "$actual" ]; then
+    PASS=$((PASS + 1))
+    echo "ok - $label"
+  else
+    FAIL=$((FAIL + 1))
+    echo "not ok - $label (unexpected '$unexpected')" >&2
+  fi
+}
+
 # One disposable upstream + clone. Stubs live on PATH ahead of real docker so
 # auto_deploy never talks to a daemon.
 setup_repo() {
@@ -260,6 +271,14 @@ assert_eq "cap skip exits 1" 1 "$LAST_STATUS"
 assert_contains "cap skip logs skip message" "skipping rebuild" "$LAST_OUT"
 assert_no_build "capped tick must not rebuild"
 
+# Deleting the deployed ref is a force-redeploy even when this SHA hit the cap.
+git -C "$CHECKOUT" update-ref -d refs/deployed/main
+: >"$BUILD_LOG"
+DOCKER_MODE=ok run_deploy
+assert_eq "forced redeploy after cap exits 0" 0 "$LAST_STATUS"
+assert_eq "forced redeploy records current tip" "$(origin_sha)" "$(deployed_sha)"
+assert_contains "forced redeploy after cap rebuilds" "compose build --pull api web" "$(cat "$BUILD_LOG")"
+
 # A newer commit resets the cap and deploys.
 commit_upstream "api fix" --api
 : >"$BUILD_LOG"
@@ -276,6 +295,28 @@ DOCKER_MODE=ok run_deploy
 assert_eq "docs-only exits 0" 0 "$LAST_STATUS"
 assert_eq "docs-only advances deployed ref" "$(origin_sha)" "$(deployed_sha)"
 assert_no_build "docs-only must not rebuild"
+
+# A docs-only fast-forward must not be marked deployed over an unhealthy stack.
+commit_upstream "docs while unhealthy" --readme
+before_unhealthy=$(deployed_sha)
+: >"$BUILD_LOG"
+DOCKER_MODE=unhealthy run_deploy
+assert_eq "unhealthy docs-only exits 1" 1 "$LAST_STATUS"
+assert_eq "unhealthy docs-only leaves deployed ref" "$before_unhealthy" "$(deployed_sha)"
+assert_no_build "unhealthy docs-only must not rebuild"
+DOCKER_MODE=ok run_deploy
+assert_eq "healthy retry of docs-only exits 0" 0 "$LAST_STATUS"
+assert_eq "healthy retry advances deployed ref" "$(origin_sha)" "$(deployed_sha)"
+
+# Untracked files are unreviewed build inputs. An override must be refused and
+# COMPOSE_FILE is pinned so Compose cannot auto-load it.
+echo 'services: {}' >"$CHECKOUT/docker-compose.override.yml"
+: >"$BUILD_LOG"
+DOCKER_MODE=ok run_deploy
+assert_eq "untracked override exits 1" 1 "$LAST_STATUS"
+assert_contains "untracked override reports dirty checkout" "checkout has local changes" "$LAST_OUT"
+assert_no_build "untracked override must not build"
+rm -f "$CHECKOUT/docker-compose.override.yml"
 
 # Deleting the deployed ref forces a full redeploy of api and web.
 git -C "$CHECKOUT" update-ref -d refs/deployed/main

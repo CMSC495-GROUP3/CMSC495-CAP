@@ -24,6 +24,9 @@ DEPLOYED_REF=refs/deployed/main
 FAILURE_STATE_FILE=.git/auto-deploy-failures
 # Override on the host if a broken commit should keep retrying (0) or give up sooner.
 MAX_FAILURES=${AUTO_DEPLOY_MAX_FAILURES:-5}
+# Never auto-load an untracked docker-compose.override.yml from the host.
+COMPOSE_FILE=docker-compose.yml
+export COMPOSE_FILE
 
 # Nginx answers /api/health by proxying to Uvicorn, so one request through
 # the web container checks both services and the hop between them. The API
@@ -85,6 +88,16 @@ main() {
   fi
 
   git fetch --quiet origin main
+  # A hand-edited checkout on the host is a problem to fix, not to deploy
+  # over. Check before even the health-only path. Include untracked,
+  # non-ignored files: they can enter a Docker build context even though
+  # `git diff` cannot see them.
+  if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+    echo "checkout has local changes; refusing to deploy" >&2
+    git status --short --untracked-files=all >&2
+    exit 1
+  fi
+
   # Last commit that passed the post-deploy health probe (or a no-rebuild
   # fast-forward). Missing means "never recorded a success", so the next
   # tick rebuilds; deleting the ref by hand forces a full redeploy.
@@ -122,12 +135,10 @@ main() {
   reload_caddy=
   grep -qE '^Caddyfile$' <<<"$changed" && reload_caddy=1
 
-  # A hand-edited checkout on the host is a problem to fix, not to deploy
-  # over. Stop before touching anything.
-  if ! git diff --quiet HEAD; then
-    echo "checkout has local changes; refusing to deploy" >&2
-    git status --short >&2
-    exit 1
+  # Deleting the deployed ref is the documented force-redeploy operation.
+  # It must also clear a retry cap for the same commit.
+  if [ -z "$deployed" ]; then
+    rm -f "$FAILURE_STATE_FILE"
   fi
 
   failures=$(failure_count_for "$new")
@@ -143,6 +154,10 @@ main() {
   fi
   echo "deploy ${from} -> ${new:0:7}: ${services[*]:-nothing to rebuild}${reload_caddy:+, reload caddy}"
   if [ ${#services[@]} -eq 0 ] && [ -z "$reload_caddy" ]; then
+    if ! healthy; then
+      echo "no rebuild required, but the stack does not answer /api/health" >&2
+      exit 1
+    fi
     mark_deployed "$new"
     exit 0
   fi
