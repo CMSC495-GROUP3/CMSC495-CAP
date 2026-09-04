@@ -458,6 +458,11 @@ locally, plus one variable in `.env`.
    sudo systemctl enable --now auto-deploy.timer
    ```
 
+   The timer fires as soon as it is enabled. A rebuild of both images needs a
+   few hundred megabytes free, so on a small root disk run
+   `docker builder prune -f` first; `df -h /` and `docker system df` show
+   where the space went.
+
 From then on the instance polls upstream `main` every two minutes. When the
 branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout and acts on
 what changed:
