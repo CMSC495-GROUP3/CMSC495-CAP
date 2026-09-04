@@ -144,14 +144,16 @@ def _persist(
 def _answer(question: str, history: list[dict]) -> dict:
     """Retrieve, gate, and generate. Shared by both chat routes.
 
-    Returns the result plus `passages` and `cache_hit` for the query log.
+    Returns the result plus `passages`, `cache_hit`, and `condensed` for the
+    query log. `condensed` is the retrieval query (rewritten on follow-ups).
     """
     corpus_version = get_corpus_version()
 
     if is_cacheable_turn(history):
         cached = get_cached_answer(question, corpus_version)
         if cached is not None:
-            return {**cached, "passages": [], "cache_hit": "answer"}
+            # Cache hits are first-turn only, so raw and condensed are equal.
+            return {**cached, "passages": [], "cache_hit": "answer", "condensed": question}
 
     retrieval_query = condense_question(question, history)
     passages = retrieve_passages(retrieval_query)
@@ -184,7 +186,7 @@ def _answer(question: str, history: list[dict]) -> dict:
     if is_cacheable_turn(history):
         put_cached_answer(question, corpus_version, result)
 
-    return {**result, "passages": passages, "cache_hit": None}
+    return {**result, "passages": passages, "cache_hit": None, "condensed": retrieval_query}
 
 
 # ── Non-streaming ─────────────────────────────────────────────────────────────
@@ -221,7 +223,7 @@ def chat(body: ChatRequest):
     log_query(
         session_id=body.session_id,
         question=body.question,
-        condensed_question=body.question,
+        condensed_question=result["condensed"],
         passages=result["passages"],
         refused=result["refused"],
         sources=result["sources"],
