@@ -17,9 +17,11 @@ set -euo pipefail
 # Nginx answers /api/health by proxying to Uvicorn, so one request through
 # the web container checks both services and the hop between them. The API
 # port is not published and neither image has curl; nginx:alpine ships
-# BusyBox wget, which exits non-zero on a 5xx.
+# BusyBox wget, which exits non-zero on a 5xx. The address is 127.0.0.1, not
+# localhost: BusyBox resolves localhost to ::1 first, and web/nginx.conf
+# listens on IPv4 only, so the name form is refused on every attempt.
 healthy() {
-  docker compose exec -T web wget -qO /dev/null http://localhost/api/health 2>/dev/null
+  docker compose exec -T web wget -qO /dev/null http://127.0.0.1/api/health 2>/dev/null
 }
 
 main() {
