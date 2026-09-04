@@ -1,0 +1,21 @@
+# Runs scripts/auto_deploy.sh once. auto-deploy.timer starts it every two
+# minutes; `sudo systemctl start auto-deploy.service` runs it now.
+# Install: sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
+[Unit]
+Description=Pull upstream main and rebuild changed services
+# The script starts with `git fetch`; without network-online the first run
+# after a reboot fails before the network is up.
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+# Both paths must match where the repository is cloned on the instance
+# (README, Deployment step 6). Edit them here if the checkout moves.
+WorkingDirectory=/home/ubuntu/CMSC495-CAP
+ExecStart=/home/ubuntu/CMSC495-CAP/scripts/auto_deploy.sh
+# A oneshot has no start timeout by default, so a hung image pull would hold
+# the unit, and every later tick, forever.
+TimeoutStartSec=15min

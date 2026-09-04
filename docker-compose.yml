@@ -12,9 +12,10 @@ services:
       SITE_ADDRESS: ${SITE_ADDRESS:-http://localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificates live here. The volume must survive `docker compose down`,
-      # which deploy.sh runs on every deploy; without it each deploy would
-      # request a new certificate and run into Let's Encrypt's issuance limit.
+      # Certificates live here. The volume must survive `docker compose down`
+      # (auto_deploy.sh never runs it, but a hand teardown does); without it
+      # each restart would request a new certificate and run into Let's
+      # Encrypt's issuance limit.
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

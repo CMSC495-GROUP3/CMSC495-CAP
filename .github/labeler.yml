@@ -32,6 +32,8 @@ infra:
           - "**/Dockerfile"
           - "**/nginx.conf"
           - "scripts/deploy.sh"
+          - "scripts/auto_deploy.sh"
+          - "scripts/systemd/**"
           - "Caddyfile"
 
 dependencies:

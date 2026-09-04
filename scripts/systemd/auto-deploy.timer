@@ -1,0 +1,12 @@
+# Enable: sudo systemctl enable --now auto-deploy.timer
+# Two minutes is a polling floor. A webhook would be faster but needs an
+# inbound port and a listener; the timer needs neither.
+[Unit]
+Description=Check upstream main every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

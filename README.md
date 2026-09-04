@@ -464,8 +464,43 @@ locally, plus one variable in `.env`.
    Encrypt HTTP challenge on port 80 on the first request. If the challenge
    fails it retries with backoff, and `docker compose logs caddy` shows why.
 
-Later deploys go through `scripts/deploy.sh`, which pulls, rebuilds without
-cache, and restarts the stack over SSH:
+6. Turn on automatic deploys. The checkout must live at
+   `/home/ubuntu/CMSC495-CAP`, which is where the unit file points:
+
+   ```bash
+   sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
+   sudo systemctl enable --now auto-deploy.timer
+   ```
+
+   The timer fires as soon as it is enabled. A rebuild of both images needs a
+   few hundred megabytes free, so on a small root disk run
+   `docker builder prune -f` first; `df -h /` and `docker system df` show
+   where the space went.
+
+From then on the instance polls upstream `main` every two minutes. When the
+branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout and acts on
+what changed:
+
+| Changed path | What happens |
+|---|---|
+| `policy_assistant/`, `requirements/`, `Dockerfile` | rebuild and recreate `api` |
+| `web/` | rebuild and recreate `web` |
+| `docker-compose.yml` | rebuild both images, `up` recreates whatever the file changed |
+| `Caddyfile` | `caddy reload` inside the running container; certificate and listeners stay |
+| anything else | nothing |
+
+After a deploy it requests `/api/health` through the `web` container, so the
+probe covers Nginx, Uvicorn, and the hop between them, and it keeps the old
+images until that probe passes. On a tick with nothing to deploy it still runs
+the probe, so a broken stack keeps the service red on every tick rather than
+going green once `main` stops moving. Caddy keeps running through an `api` or
+`web` deploy, so the certificate and in-flight requests survive.
+`sudo journalctl -u auto-deploy.service` shows what the last run did. Run the
+script by hand as `ubuntu`, not under `sudo`; it refuses to run on a checkout
+that is not on `main` or that has local edits.
+
+`scripts/deploy.sh` runs the same script now, over SSH, for when two minutes
+is too long to wait:
 
 ```bash
 EC2_HOST=ubuntu@sourcebook.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
@@ -610,7 +645,8 @@ policy_assistant/   the Python application, one package, absolute imports only
     seed_documents.py, embed_documents.py   offline ingestion
 web/                React 19, TypeScript, Tailwind 4, Vite; served by Nginx
 tests/              pytest suite; conftest.py stubs every external service
-scripts/            deploy.sh, audit.sh, and the load-test harness in loadtest/
+scripts/            auto_deploy.sh and its systemd units, deploy.sh, audit.sh, and the
+                    load-test harness in loadtest/
 evaluation/         20 labeled questions and how to score them
 data/               37 fictional sample policies
 requirements/       base.txt shared; api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)

@@ -240,7 +240,10 @@ covers `.env`; the rest is on you.
 
 - `make stub` in one terminal, `make loadtest` in another. Method, numbers, and
   caveats in `scripts/loadtest/RESULTS.md`.
-- `scripts/deploy.sh` pulls and rebuilds the Compose stack on the EC2 host.
-  Its usage is at the top of the file, and it touches real infrastructure, so
-  read it before running it. The host setup (Elastic IP, DuckDNS record,
-  security group, `SITE_ADDRESS` in `.env`) is in the README's Deploy section.
+- The EC2 host deploys itself: a systemd timer runs `scripts/auto_deploy.sh`
+  every two minutes, which fast-forwards to upstream `main` and rebuilds only
+  the services whose inputs changed. `scripts/deploy.sh` starts that service
+  now, over SSH, and prints its log. Both touch real infrastructure, so read
+  them before running them. The host setup (Elastic IP, DuckDNS record,
+  security group, `SITE_ADDRESS` in `.env`, the timer) is in the README's
+  Deployment section.
