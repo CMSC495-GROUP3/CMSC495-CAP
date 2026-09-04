@@ -66,6 +66,18 @@ def test_refusals_are_cached_too():
     assert get_cached_answer("q", version)["refused"] is True
 
 
+def test_cached_refusal_misses_after_similarity_threshold_changes(monkeypatch):
+    version = get_corpus_version()
+    refusal = {**RESULT, "refused": True, "sources": []}
+
+    put_cached_answer("q", version, refusal)
+    assert get_cached_answer("q", version) == refusal
+
+    monkeypatch.setattr(cache, "SIMILARITY_THRESHOLD", 0.0)
+    assert get_cached_answer("q", version) is None
+    assert FAKE_DB["answer_cache"].count_documents({}) == 1
+
+
 def test_only_first_turns_are_cacheable():
     assert is_cacheable_turn([]) is True
     assert is_cacheable_turn([{"role": "user", "content": "q"}]) is False
