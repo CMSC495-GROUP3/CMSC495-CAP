@@ -459,14 +459,26 @@ locally, plus one variable in `.env`.
    ```
 
 From then on the instance polls upstream `main` every two minutes. When the
-branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout, rebuilds
-only the services whose inputs changed (`api` for `policy_assistant/`,
-`requirements/`, or `Dockerfile`; `web` for `web/`; everything for
-`docker-compose.yml` or `Caddyfile`), restarts those, and probes
-`/api/health`. A merge that touches only documentation rebuilds nothing.
-Caddy keeps running through an `api` or `web` deploy, so the certificate and
-in-flight requests survive. `sudo journalctl -u auto-deploy.service` shows
-what the last run did.
+branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout and acts on
+what changed:
+
+| Changed path | What happens |
+|---|---|
+| `policy_assistant/`, `requirements/`, `Dockerfile` | rebuild and recreate `api` |
+| `web/` | rebuild and recreate `web` |
+| `docker-compose.yml` | rebuild both images, `up` recreates whatever the file changed |
+| `Caddyfile` | `caddy reload` inside the running container; certificate and listeners stay |
+| anything else | nothing |
+
+After a deploy it requests `/api/health` through the `web` container, so the
+probe covers Nginx, Uvicorn, and the hop between them, and it keeps the old
+images until that probe passes. On a tick with nothing to deploy it still runs
+the probe, so a broken stack keeps the service red on every tick rather than
+going green once `main` stops moving. Caddy keeps running through an `api` or
+`web` deploy, so the certificate and in-flight requests survive.
+`sudo journalctl -u auto-deploy.service` shows what the last run did. Run the
+script by hand as `ubuntu`, not under `sudo`; it refuses to run on a checkout
+that is not on `main` or that has local edits.
 
 `scripts/deploy.sh` runs the same script now, over SSH, for when two minutes
 is too long to wait:

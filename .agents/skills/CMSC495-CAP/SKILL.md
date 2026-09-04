@@ -49,7 +49,7 @@ policy_assistant/   the Python application, one package, absolute imports only
 web/src/            components/{Auth,Chat,Documents,Layout}, hooks/useChat.ts, pages/, api/client.ts, config.ts
 tests/              conftest.py stubs Mongo, the model, vector search, and index creation before importing main
 scripts/loadtest/   fakemongo.py (partial in-memory Mongo), server.py (the stub app), run.py
-scripts/            deploy.sh, audit.sh
+scripts/            auto_deploy.sh and its systemd/ units (the EC2 host runs it on a timer), deploy.sh, audit.sh
 evaluation/         20 labeled questions and the metric definitions
 data/               sample policy corpus
 requirements/       base.txt, api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)

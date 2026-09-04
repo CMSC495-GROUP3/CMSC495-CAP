@@ -2,64 +2,112 @@
 # Pull upstream main when it moves and rebuild only the services whose
 # inputs changed. The systemd timer in scripts/systemd/ runs this every two
 # minutes on the EC2 host; scripts/deploy.sh runs it on demand. Safe to run
-# by hand from the checkout.
+# by hand from the checkout, as the deploying user rather than root.
 #
 # Why not `docker compose down && build --no-cache && up`: both Dockerfiles
 # copy dependency manifests before source, so Docker's own cache already
 # rebuilds the right layers when source changes. Stopping Caddy on every
 # deploy dropped in-flight requests and forced a certificate reload for
 # README-only merges.
+#
+# Everything lives in main() so bash parses the whole file before running
+# any of it: the fast-forward below replaces this very file.
 set -euo pipefail
-cd "$(dirname "$0")/.."
 
-# One deploy at a time. A slow image build must not overlap the next tick.
-command -v flock >/dev/null || { echo "flock is required (util-linux)" >&2; exit 1; }
-exec 9>/tmp/auto-deploy.lock
-flock -n 9 || { echo "another deploy is running"; exit 0; }
+# Nginx answers /api/health by proxying to Uvicorn, so one request through
+# the web container checks both services and the hop between them. The API
+# port is not published and neither image has curl; nginx:alpine ships
+# BusyBox wget, which exits non-zero on a 5xx.
+healthy() {
+  docker compose exec -T web wget -qO /dev/null http://localhost/api/health 2>/dev/null
+}
 
-git fetch --quiet origin main
-old=$(git rev-parse HEAD)
-new=$(git rev-parse origin/main)
-if [ "$old" = "$new" ]; then
-  exit 0
-fi
+main() {
+  cd "$(dirname "$0")/.."
 
-changed=$(git diff --name-only "$old" "$new")
-services=()
-grep -qE '^(Dockerfile|requirements/|policy_assistant/)' <<<"$changed" && services+=(api)
-grep -qE '^web/' <<<"$changed" && services+=(web)
-grep -qE '^(docker-compose\.yml|Caddyfile)$' <<<"$changed" && services=(api web caddy)
+  # One deploy at a time: a manual run must not overlap the timer (systemd
+  # itself never starts a second instance of a oneshot that is still
+  # running). The lock is on the checkout directory, so nothing is created
+  # and a run under sudo cannot leave a root-owned lock file behind.
+  command -v flock >/dev/null || { echo "flock is required (util-linux)" >&2; exit 1; }
+  exec 9<.
+  flock -n 9 || { echo "another deploy is running"; exit 0; }
 
-# A hand-edited checkout on the host is a problem to fix, not to deploy
-# over. Stop before touching anything.
-if ! git diff --quiet HEAD; then
-  echo "checkout has local changes; refusing to deploy" >&2
-  git status --short >&2
-  exit 1
-fi
-git merge --ff-only --quiet origin/main
-echo "deploy ${old:0:7} -> ${new:0:7}: ${services[*]:-nothing to rebuild}"
-if [ ${#services[@]} -eq 0 ]; then
-  exit 0
-fi
+  branch=$(git symbolic-ref --short -q HEAD || true)
+  if [ "$branch" != main ]; then
+    echo "checkout is on ${branch:-a detached HEAD}, not main; refusing to deploy" >&2
+    exit 1
+  fi
 
-# --pull refreshes base images so a Dependabot Docker bump takes effect.
-# --no-deps keeps `up` from restarting Caddy when only api or web changed.
-docker compose build --pull "${services[@]}"
-docker compose up -d --no-deps "${services[@]}"
-docker image prune -f >/dev/null
-
-# The API port is not published and the image has no curl, so probe from
-# inside the container. Uvicorn is up within a few seconds of the restart.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if docker compose exec -T api python -c \
-    "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)" \
-    2>/dev/null; then
-    docker compose ps
+  git fetch --quiet origin main
+  old=$(git rev-parse HEAD)
+  new=$(git rev-parse origin/main)
+  if [ "$old" = "$new" ]; then
+    # Nothing to deploy. Probe anyway, so a stack that an earlier run left
+    # broken keeps this unit red on every tick instead of turning green as
+    # soon as the head stops moving.
+    if ! healthy; then
+      echo "nothing to deploy, but the stack does not answer /api/health" >&2
+      exit 1
+    fi
     exit 0
   fi
-  sleep 2
-done
-echo "api did not answer /api/health after the deploy" >&2
-docker compose logs --tail 30 api >&2
-exit 1
+
+  changed=$(git diff --name-only "$old" "$new")
+  services=()
+  grep -qE '^(Dockerfile|requirements/|policy_assistant/)' <<<"$changed" && services+=(api)
+  grep -qE '^web/' <<<"$changed" && services+=(web)
+  # docker-compose.yml is not a build input; `up` recreates whatever it
+  # changed, Caddy included. Both images are rebuilt anyway in case a build
+  # arg or context moved; with a warm cache that costs seconds.
+  recreate_caddy=
+  grep -qE '^docker-compose\.yml$' <<<"$changed" && { services=(api web); recreate_caddy=1; }
+  # Caddyfile is bind-mounted, so `up` sees no change and would leave the
+  # old config running. Caddy reloads in place, keeping its certificate and
+  # its listeners.
+  reload_caddy=
+  grep -qE '^Caddyfile$' <<<"$changed" && reload_caddy=1
+
+  # A hand-edited checkout on the host is a problem to fix, not to deploy
+  # over. Stop before touching anything.
+  if ! git diff --quiet HEAD; then
+    echo "checkout has local changes; refusing to deploy" >&2
+    git status --short >&2
+    exit 1
+  fi
+  git merge --ff-only --quiet origin/main
+  echo "deploy ${old:0:7} -> ${new:0:7}: ${services[*]:-nothing to rebuild}${reload_caddy:+, reload caddy}"
+  if [ ${#services[@]} -eq 0 ] && [ -z "$reload_caddy" ]; then
+    exit 0
+  fi
+
+  if [ ${#services[@]} -gt 0 ]; then
+    up=("${services[@]}")
+    [ -n "$recreate_caddy" ] && up+=(caddy)
+    # --pull refreshes base images so a Dependabot Docker bump takes effect.
+    # --no-deps keeps `up` from restarting Caddy when only api or web changed.
+    docker compose build --pull "${services[@]}"
+    docker compose up -d --no-deps "${up[@]}"
+  fi
+  if [ -n "$reload_caddy" ]; then
+    docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+  fi
+
+  # Sixty seconds covers a cold Uvicorn start on a small instance and the
+  # few seconds Nginx may keep a stale address for a recreated api.
+  for _ in $(seq 30); do
+    if healthy; then
+      docker compose ps
+      # Only now is the previous image safe to drop. Until the probe passes,
+      # retagging it is the quickest way back.
+      docker image prune -f >/dev/null
+      exit 0
+    fi
+    sleep 2
+  done
+  echo "stack did not answer /api/health after the deploy" >&2
+  docker compose logs --tail 30 web api >&2
+  exit 1
+}
+
+main "$@"
