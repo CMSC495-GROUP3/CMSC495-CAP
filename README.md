@@ -1,17 +1,17 @@
-# Policy Assistant
+# Sourcebook
 
 An internal assistant that answers employee questions about company policy and
 cites the document each answer came from. When the corpus does not cover a
 question it says so and offers to hand the question to a person, instead of
 guessing.
 
-Pilot: <https://policy-assistant.duckdns.org>. Sign in with the shared
+Pilot: <https://sourcebook.duckdns.org>. Sign in with the shared
 password; ask the team for it. The instance is not hosted around the clock, so
 a connection timeout means it is off, not broken.
 
-The name is a placeholder. To rebrand, change `APP_NAME` in
-`policy_assistant/rag/config.py` and `web/src/config.ts`, and the `<title>` in
-`web/index.html`.
+The name lives in three places: `APP_NAME` in `policy_assistant/rag/config.py`
+and `web/src/config.ts`, and the `<title>` in `web/index.html`. Change all
+three together to rebrand.
 
 ## Run it in ten minutes
 
@@ -90,7 +90,7 @@ flowchart LR
     EMBED --> MONGO[("MongoDB Atlas<br/>passages + metadata + vectors")]
 
     USER["Employee"] --> REACT["React + TypeScript"]
-    REACT -->|"https://policy-assistant.duckdns.org"| CADDY["Caddy (TLS)"]
+    REACT -->|"https://sourcebook.duckdns.org"| CADDY["Caddy (TLS)"]
     CADDY --> NGINX["Nginx"]
     NGINX --> API["FastAPI"]
     API --> MONGO
@@ -423,7 +423,7 @@ repo root with `uvicorn policy_assistant.api.main:app --reload`.
 
 ## Deployment
 
-The pilot runs on a single EC2 instance at <https://policy-assistant.duckdns.org>.
+The pilot runs on a single EC2 instance at <https://sourcebook.duckdns.org>.
 DuckDNS provides the name for free and Caddy fetches the certificate, so the
 instance needs no manual TLS setup. The stack is the same Compose file used
 locally, plus one variable in `.env`.
@@ -437,7 +437,7 @@ locally, plus one variable in `.env`.
    in step 1 with one extra line:
 
    ```dotenv
-   SITE_ADDRESS=policy-assistant.duckdns.org
+   SITE_ADDRESS=sourcebook.duckdns.org
    ```
 
 5. Start the stack:
@@ -472,7 +472,7 @@ what the last run did.
 is too long to wait:
 
 ```bash
-EC2_HOST=ubuntu@policy-assistant.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
+EC2_HOST=ubuntu@sourcebook.duckdns.org SSH_KEY_PATH=~/.ssh/key.pem ./scripts/deploy.sh
 ```
 
 Certificates persist in the `caddy_data` volume across restarts and deploys.
@@ -493,8 +493,8 @@ serving and that client addresses reach the API the way the trust chain intends
 1. The site answers over TLS and the health route returns 200:
 
    ```bash
-   curl -sI https://policy-assistant.duckdns.org/ | grep -i strict-transport
-   curl -s -o /dev/null -w '%{http_code}\n' https://policy-assistant.duckdns.org/api/health
+   curl -sI https://sourcebook.duckdns.org/ | grep -i strict-transport
+   curl -s -o /dev/null -w '%{http_code}\n' https://sourcebook.duckdns.org/api/health
    ```
 
 2. Both Compose networks sit inside either `172.16.0.0/12` or
@@ -502,7 +502,7 @@ serving and that client addresses reach the API the way the trust chain intends
    container carries the trust variable:
 
    ```bash
-   ssh ubuntu@policy-assistant.duckdns.org '
+   ssh ubuntu@sourcebook.duckdns.org '
      docker network inspect cmsc495-cap_edge cmsc495-cap_app \
        --format "{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}"
      docker inspect cmsc495-cap-api-1 \
@@ -519,8 +519,8 @@ serving and that client addresses reach the API the way the trust chain intends
    ```bash
    curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 198.18.0.1' \
      -H 'Content-Type: application/json' --data '{"password":"wrong"}' \
-     https://policy-assistant.duckdns.org/api/auth/login
-   ssh ubuntu@policy-assistant.duckdns.org 'docker logs cmsc495-cap-api-1 --tail 5'
+     https://sourcebook.duckdns.org/api/auth/login
+   ssh ubuntu@sourcebook.duckdns.org 'docker logs cmsc495-cap-api-1 --tail 5'
    ```
 
    The request returns 401 and the "Failed login attempt from" line carries

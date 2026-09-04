@@ -1,6 +1,6 @@
 ---
 name: CMSC495-CAP
-description: Working in the CMSC495-CAP policy assistant repo. Stack, layout, commands, code conventions, what CI enforces, and the rules that are easy to break without noticing. Read before changing anything here.
+description: Working in the CMSC495-CAP repo, the Sourcebook policy assistant. Stack, layout, commands, code conventions, what CI enforces, and the rules that are easy to break without noticing. Read before changing anything here.
 ---
 
 # CMSC495-CAP: how to work in this repo
