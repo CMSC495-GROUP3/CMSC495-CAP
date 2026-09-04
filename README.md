@@ -251,12 +251,18 @@ history handling, same reason: a client that could supply its own text could
 escalate an exchange that never happened. Escalating the same message twice
 returns the first record instead of filing a second.
 
-Records land in the `escalations` collection with status `open`. If
-`ESCALATION_WEBHOOK_URL` is set, each one is also posted there in a background
-task after the response is sent. The payload has a top-level `text` field, so a
-Slack or Teams incoming webhook renders it with no adapter. Delivery is best
-effort and logged on failure. The record is already stored, and a webhook
-outage must not turn a successful hand-off into an error.
+Records land in the `escalations` collection with status `open` and delivery
+status `pending`. If `ESCALATION_WEBHOOK_URL` is set, each one is also posted
+there in a background task after the response is sent. The payload has a
+top-level `text` field, so a Slack or Teams incoming webhook renders it with no
+adapter. Each attempt updates non-secret delivery fields on the record
+(`pending` / `delivered` / `failed`, attempt count, last-attempt time). Delivery
+is best effort and logged on failure; the webhook URL is never stored, logged,
+or returned. The record is already stored, and a webhook outage must not turn a
+successful hand-off into an error. Failed deliveries can be retried with
+`POST /api/escalations/{id}/retry-delivery` up to
+`ESCALATION_WEBHOOK_MAX_ATTEMPTS`, with an atomic claim so concurrent retries
+cannot double-send.
 
 Whoever handles the queue lists it with `GET /api/escalations?status=open` and
 closes an item with `PATCH /api/escalations/{id}` and a resolution note. There
@@ -686,7 +692,7 @@ policy_assistant/   the Python application, one package, absolute imports only
       conversations.py  saved conversations and their citations
       projects.py       folders that group conversations
       documents.py      browse and search the indexed corpus
-      escalations.py    hand a question to a person; open queue; resolve
+      escalations.py    hand a question to a person; open queue; resolve; retry delivery
   rag/              the pipeline, imported by api/ and run offline for ingestion
     config.py         every tuning knob, env-overridable; defaults live here
     llm.py            LLMProvider interface, the only vendor-aware module
