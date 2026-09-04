@@ -32,18 +32,31 @@ because results depend on the configured models, corpus, and retrieval index.
 
 | Metric | Calculation |
 |---|---|
-| Recall@5 | Percentage of answerable cases whose expected policy appears among the five retrieved sources |
-| Citation correctness | Percentage of answerable cases that cite an expected policy |
-| Grounded answer rate | Percentage of answerable cases that answer and cite an expected policy |
+| Recall@5 | Percentage of answerable cases whose expected policy appears among the five `retrieved_sources` |
+| Citation correctness | Percentage of answerable cases whose generated answer text names an expected policy title |
+| Grounded answer rate | Percentage of answerable cases that answer (not refused) and whose answer text names an expected policy |
 | Refusal handling | Percentage of refusal cases that the grounding gate declines |
 
-The automated citation check confirms that the expected document was cited.
-Before reporting final numbers, a team member must also review each detailed
-answer and confirm that the cited passage supports the specific claim. The
-three ambiguous cases require the same manual review because source matching
+Retrieval, displayed attribution, and answer citations are measured separately:
+
+- `retrieved_sources` — titles returned by vector search (Recall@5 input).
+- `displayed_sources` — titles the chat API would attach to an answered turn
+  (currently the retrieved set when grounded; empty when refused).
+- `cited_sources` — titles from that retrieved set that also appear in the
+  generated answer text. Citation correctness uses this field only.
+
+The automated citation check confirms that the expected document title appears
+in the answer. It does **not** confirm that the named passage supports the
+claim. Before reporting final numbers, a team member must still review each
+detailed answer and confirm that the cited passage supports the specific claim.
+The three ambiguous cases require the same manual review because source matching
 alone cannot determine whether the answer asked for the right clarification.
 
 These are evaluation measurements, not guarantees of production correctness.
 If a result misses its target, preserve the result and use it to tune chunking,
 retrieval count, or the grounding threshold. Do not rewrite the expected answer
 to make the score look better.
+
+LOCAL DOC HOLD: category counts in the table above remain the main-branch mix.
+Issue #95 updates the answerable/unanswerable split; this PR only changes how
+citations are measured.
