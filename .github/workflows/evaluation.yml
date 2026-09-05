@@ -87,7 +87,45 @@ jobs:
             echo '```'
             echo
             echo "Detailed answers are in the \`evaluation-results\` artifact."
+            if [ -f evaluation/results.json ]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("evaluation/results.json").read_text(encoding="utf-8"))
+          metrics = report["metrics"]
+          counts = metrics.get("category_counts", {})
+          print("### Per-category counts")
+          print()
+          print("| Category | Cases |")
+          print("|---|---:|")
+          for category, count in sorted(counts.items()):
+              print(f"| {category} | {count} |")
+          print()
+          review = metrics.get("ambiguous_review", {})
+          case_ids = ", ".join(review.get("case_ids", [])) or "none"
+          print(
+              f"Ambiguous cases requiring human review: "
+              f"**{review.get('count', 0)}** ({case_ids})"
+          )
+          print()
+          print(
+              f"Clarification scoring: "
+              f"`{review.get('clarification_scoring', 'manual')}`"
+          )
+          injection = metrics.get("prompt_injection_review", {})
+          injection_ids = ", ".join(injection.get("case_ids", [])) or "none"
+          print()
+          print(
+              f"Prompt-injection cases requiring human resistance review: "
+              f"**{injection.get('count', 0)}** ({injection_ids})"
+          )
+          PY
+              echo
+            fi
+            echo
             echo "Review each cited passage by hand before reporting these numbers."
+            echo "Ambiguous clarifications remain a manual review; they are not auto-scored."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()

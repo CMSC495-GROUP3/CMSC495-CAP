@@ -186,7 +186,6 @@ def test_score_results_reports_required_metrics():
     assert report["recall_at_5"] == 50.0
     assert report["citation_correctness"] == 50.0
     assert report["grounded_answer_rate"] == 50.0
-    assert report["refusal_handling"] == 100.0
     assert report["evaluated_cases"] == 3
 
 
@@ -213,7 +212,12 @@ def test_score_results_uses_none_when_a_metric_has_no_eligible_cases():
     assert report["recall_at_5"] is None
     assert report["citation_correctness"] is None
     assert report["grounded_answer_rate"] is None
-    assert report["refusal_handling"] is None
+    assert report["unsupported_refusal_handling"] is None
+    assert report["prompt_injection_grounding_gate_refusal"] is None
+    assert report["category_counts"]["ambiguous"] == 1
+    assert report["ambiguous_review"]["count"] == 1
+    assert report["ambiguous_review"]["clarification_scoring"] == "manual"
+    assert report["prompt_injection_review"]["resistance_scoring"] == "manual"
 
 
 def test_extract_answer_citations_finds_known_titles_in_answer_order():
@@ -332,3 +336,143 @@ def test_citation_correctness_passes_only_when_answer_names_expected_policy():
     assert results[0]["cited_sources"] == ["Paid Time Off (PTO) Policy"]
     assert report["citation_correctness"] == 100.0
     assert report["grounded_answer_rate"] == 100.0
+
+
+def test_score_results_separates_unsupported_and_prompt_injection_refusals():
+    """Lumping refuse outcomes hid whether injection handling actually worked."""
+    cases = [
+        {
+            "id": "u1",
+            "category": "unanswerable",
+            "expected_sources": [],
+            "expected_outcome": "refuse",
+        },
+        {
+            "id": "u2",
+            "category": "unanswerable",
+            "expected_sources": [],
+            "expected_outcome": "refuse",
+        },
+        {
+            "id": "p1",
+            "category": "prompt_injection",
+            "expected_sources": [],
+            "expected_outcome": "refuse",
+        },
+        {
+            "id": "p2",
+            "category": "prompt_injection",
+            "expected_sources": [],
+            "expected_outcome": "refuse",
+        },
+        {
+            "id": "amb1",
+            "category": "ambiguous",
+            "expected_sources": ["Policy A"],
+            "expected_outcome": "clarify",
+        },
+        {
+            "id": "a1",
+            "category": "answerable",
+            "expected_sources": ["Policy A"],
+            "expected_outcome": "answer",
+        },
+    ]
+    results = [
+        {"id": "u1", "retrieved_sources": [], "cited_sources": [], "refused": True},
+        {"id": "u2", "retrieved_sources": ["X"], "cited_sources": [], "refused": False},
+        {"id": "p1", "retrieved_sources": [], "cited_sources": [], "refused": True},
+        {"id": "p2", "retrieved_sources": [], "cited_sources": [], "refused": True},
+        {
+            "id": "amb1",
+            "retrieved_sources": ["Policy A"],
+            "cited_sources": [],
+            "refused": False,
+        },
+        {
+            "id": "a1",
+            "retrieved_sources": ["Policy A"],
+            "cited_sources": ["Policy A"],
+            "refused": False,
+        },
+    ]
+
+    report = score_results(cases, results)
+
+    assert report["unsupported_refusal_handling"] == 50.0
+    assert report["prompt_injection_grounding_gate_refusal"] == 100.0
+    assert report["prompt_injection_review"]["case_ids"] == ["p1", "p2"]
+    assert report["prompt_injection_review"]["resistance_scoring"] == "manual"
+    assert report["category_counts"] == {
+        "ambiguous": 1,
+        "answerable": 1,
+        "prompt_injection": 2,
+        "unanswerable": 2,
+    }
+    assert report["ambiguous_review"]["count"] == 1
+    assert report["ambiguous_review"]["case_ids"] == ["amb1"]
+    assert report["ambiguous_review"]["status"] == "manual_review_required"
+    assert report["ambiguous_review"]["clarification_scoring"] == "manual"
+    assert report["recall_at_5"] == 100.0
+    assert report["citation_correctness"] == 100.0
+    assert report["grounded_answer_rate"] == 100.0
+
+
+def test_score_results_empty_category_set_keeps_zero_counts_and_none_rates():
+    """An empty case list still exposes every category key with a zero count."""
+    report = score_results([], [])
+
+    assert report["evaluated_cases"] == 0
+    assert report["category_counts"] == {
+        "ambiguous": 0,
+        "answerable": 0,
+        "prompt_injection": 0,
+        "unanswerable": 0,
+    }
+    assert report["recall_at_5"] is None
+    assert report["citation_correctness"] is None
+    assert report["grounded_answer_rate"] is None
+    assert report["unsupported_refusal_handling"] is None
+    assert report["prompt_injection_grounding_gate_refusal"] is None
+    assert report["prompt_injection_review"]["status"] == "none"
+    assert report["ambiguous_review"]["count"] == 0
+    assert report["ambiguous_review"]["case_ids"] == []
+    assert report["ambiguous_review"]["status"] == "none"
+    assert report["ambiguous_review"]["clarification_scoring"] == "manual"
+
+
+def test_score_results_reports_all_ambiguous_identities_for_review():
+    cases = [
+        {
+            "id": "ambiguous_01",
+            "category": "ambiguous",
+            "expected_sources": ["Policy A"],
+            "expected_outcome": "clarify",
+        },
+        {
+            "id": "ambiguous_02",
+            "category": "ambiguous",
+            "expected_sources": ["Policy B"],
+            "expected_outcome": "clarify",
+        },
+        {
+            "id": "ambiguous_03",
+            "category": "ambiguous",
+            "expected_sources": ["Policy C"],
+            "expected_outcome": "clarify",
+        },
+    ]
+    results = [
+        {"id": case["id"], "retrieved_sources": [], "cited_sources": [], "refused": False}
+        for case in cases
+    ]
+
+    report = score_results(cases, results)
+
+    assert report["ambiguous_review"]["count"] == 3
+    assert report["ambiguous_review"]["case_ids"] == [
+        "ambiguous_01",
+        "ambiguous_02",
+        "ambiguous_03",
+    ]
+    assert report["ambiguous_review"]["clarification_scoring"] == "manual"
