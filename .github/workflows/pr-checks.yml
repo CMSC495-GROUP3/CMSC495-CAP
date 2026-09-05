@@ -1,6 +1,5 @@
-# Checks on the pull request itself rather than on the code: the title, the
-# description, and labels. None of these need write access to the repository
-# except labeling, which is skipped on PRs from forks (their token is read-only).
+# Read-only checks on pull-request metadata: the title and description. Path
+# labels are handled separately by the metadata-only "PR path labels" workflow.
 
 name: PR checks
 
