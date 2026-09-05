@@ -39,14 +39,10 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
     if (!sessionId) setMessages([])
   }
 
-  // Both requests below can outlive the conversation that started them: the
-  // user clicks a second chat before the first has loaded, or "New chat"
-  // before follow-ups return. A late response used to write into whichever
-  // list was on screen, at an index from the old conversation. Past the end
-  // of a shorter list that left a hole, the next `[...prev]` turned the hole
-  // into an undefined message, and <Message> crashed on `message.role`, which
-  // unmounted the whole app (issue #82). The cleanup flag drops any response
-  // that belongs to a conversation the user has already left.
+  // A conversation load can outlive the conversation that started it: the
+  // user clicks a second chat before the first has loaded. A late response
+  // used to write into whichever list was on screen. The cleanup flag drops
+  // any response that belongs to a conversation the user has already left.
   useEffect(() => {
     if (!sessionId) return
     if (skipNextFetch.current) {
@@ -63,6 +59,7 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
         confidence?: number | null
         refused?: boolean
         escalation_id?: string
+        follow_ups?: string[]
       }[] = res.data.messages ?? []
       const mapped: ChatMessage[] = raw.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -71,29 +68,9 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
         confidence: m.confidence,
         refused: m.refused,
         escalation_id: m.escalation_id,
+        follow_ups: m.follow_ups,
       }))
       setMessages(mapped)
-
-      // Generate fresh follow-ups for the last Q/A exchange
-      const lastAssistantIdx = mapped.reduceRight((found, m, i) => found === -1 && m.role === 'assistant' ? i : found, -1)
-      if (lastAssistantIdx > 0) {
-        const lastUserIdx = mapped.slice(0, lastAssistantIdx).reduceRight((found, m, i) => found === -1 && m.role === 'user' ? i : found, -1)
-        if (lastUserIdx !== -1) {
-          client.post('/api/chat/follow-ups', {
-            question: mapped[lastUserIdx].content,
-            answer: mapped[lastAssistantIdx].content,
-          }).then((r) => {
-            if (cancelled) return
-            setMessages((prev) => {
-              // Never write past the end of the list or onto a user turn.
-              if (prev[lastAssistantIdx]?.role !== 'assistant') return prev
-              const updated = [...prev]
-              updated[lastAssistantIdx] = { ...updated[lastAssistantIdx], follow_ups: r.data.follow_ups }
-              return updated
-            })
-          }).catch(() => { /* follow-ups are non-critical */ })
-        }
-      }
     })
     return () => {
       cancelled = true

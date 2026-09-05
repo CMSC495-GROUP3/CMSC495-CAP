@@ -2,6 +2,7 @@
 
 from conftest import FAKE_DB
 
+from policy_assistant.api.limiter import limiter
 from policy_assistant.api.routes.documents import _preview
 from policy_assistant.rag.cache import get_corpus_version
 
@@ -107,3 +108,11 @@ def test_empty_corpus(client, auth):
     assert result["corpus_version"] != before
     assert client.get("/api/documents", headers=auth).json() == {"items": [], "total": 0}
     assert client.get("/api/documents/categories", headers=auth).json() == []
+    assert client.post("/api/documents/reindex", headers=auth).json()["documents"] == 0
+
+
+def test_reindex_rate_limited_per_client(client, auth):
+    limiter.enabled = True
+    limiter.reset()
+    statuses = [client.post("/api/documents/reindex", headers=auth).status_code for _ in range(3)]
+    assert statuses == [200, 200, 429]

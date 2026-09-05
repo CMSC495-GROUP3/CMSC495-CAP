@@ -91,6 +91,13 @@ THREADPOOL_TOKENS = int(os.getenv("THREADPOOL_TOKENS", "100"))
 # checkpw through this limiter so a saturated chat pool cannot block sign-in.
 LOGIN_THREADPOOL_TOKENS = int(os.getenv("LOGIN_THREADPOOL_TOKENS", "10"))
 
+# ── HTTP rate limits (slowapi) ────────────────────────────────────────────────
+# Per remote address. Shared-office NAT means one address is the whole office,
+# so keep these well above one person's pace. Login and escalations keep their
+# own hard-coded limits on the route decorators.
+CHAT_RATE_LIMIT = os.getenv("CHAT_RATE_LIMIT", "30/minute")
+REINDEX_RATE_LIMIT = os.getenv("REINDEX_RATE_LIMIT", "2/minute")
+
 # ── OpenAI client ─────────────────────────────────────────────────────────────
 # Bound every provider call. The SDK defaults are a 10-minute timeout and two
 # retries; under a stall that pins THREADPOOL_TOKENS for far longer than a user

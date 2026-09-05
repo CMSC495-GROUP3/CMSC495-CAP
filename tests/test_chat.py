@@ -1,8 +1,11 @@
 """The chat routes: grounding gate, history handling, streaming protocol,
 caching, and the bookkeeping that must survive a dropped stream."""
 
+import logging
+
 from conftest import FAKE_DB, make_passages, sse_events
 
+from policy_assistant.api.limiter import limiter
 from policy_assistant.api.routes.chat import ChatRequest, _stream, load_history
 from policy_assistant.rag import llm
 from policy_assistant.rag.cache import get_cached_answer, get_corpus_version
@@ -121,9 +124,38 @@ class TestChat:
         assert user == {"role": "user", "content": "How much PTO?"}
         assert assistant["sources"] == ["Paid Time Off (PTO) Policy"]
         assert assistant["confidence"] == 75 and assistant["refused"] is False
+        assert assistant["follow_ups"] == body["follow_ups"]
+        assert len(assistant["follow_ups"]) == 3
 
         log = FAKE_DB["query_logs"].find_one({})
         assert log["best_score"] == 0.80 and log["refused"] is False and log["cache_hit"] is None
+
+    def test_rate_limited_per_client(self, client, auth, retrieval, conversation, caplog):
+        limiter.enabled = True
+        limiter.reset()
+        with caplog.at_level(logging.WARNING, logger="policy_assistant.api.limiter"):
+            statuses = [
+                client.post(
+                    "/api/chat",
+                    json={"question": f"q{i}", "session_id": conversation},
+                    headers=auth,
+                ).status_code
+                for i in range(31)
+            ]
+        assert statuses[:30] == [200] * 30
+        assert statuses[30] == 429
+        assert "Rate limit exceeded for cred=APP_PASSWORD_HASH" in caplog.text
+        assert "/api/chat" in caplog.text
+
+    def test_free_text_follow_ups_route_is_gone(self, client, auth):
+        assert (
+            client.post(
+                "/api/chat/follow-ups",
+                json={"question": "q", "answer": "a"},
+                headers=auth,
+            ).status_code
+            == 404
+        )
 
     def test_generation_failure_is_reported_not_raised(
         self, client, auth, retrieval, conversation, monkeypatch
