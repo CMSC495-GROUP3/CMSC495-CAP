@@ -167,6 +167,9 @@ class TestCreate:
     def test_note_is_bounded(self, client, auth, refused, delivered):
         assert _create(client, auth, refused, note="x" * 2001).status_code == 422
 
+    def test_rejects_session_id_with_newlines(self, client, auth, delivered):
+        assert _create(client, auth, "abc\nINFO forged").status_code == 422
+
     def test_rate_limited_per_client(self, client, auth, refused, delivered):
         limiter.enabled = True
         limiter.reset()
