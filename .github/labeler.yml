@@ -1,5 +1,5 @@
-# Path-based labels applied by the "PR checks" workflow on PRs from branches in
-# this repository. Labels that do not exist yet are created on first use.
+# Existing path-based labels applied to organization and fork pull requests by
+# the "PR path labels" workflow. Missing labels are not created automatically.
 
 api:
   - changed-files:
