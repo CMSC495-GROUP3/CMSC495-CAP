@@ -4,15 +4,23 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 
+import anyio
 import bcrypt
+from anyio import CapacityLimiter
 from fastapi import APIRouter, HTTPException, Request, status
 from jose import jwt
 from pydantic import BaseModel
 
 from policy_assistant.api.limiter import limiter
+from policy_assistant.rag.config import LOGIN_THREADPOOL_TOKENS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Login runs off the default THREADPOOL_TOKENS pool so bcrypt still works when
+# every chat slot is held by a stalled or slow provider call. Sized small:
+# checkpw is milliseconds, not generation-length.
+_login_limiter = CapacityLimiter(LOGIN_THREADPOOL_TOKENS)
 
 # No default — main.py already enforced this is set at startup
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
@@ -154,15 +162,14 @@ def create_access_token(data: dict, expires_delta: timedelta) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-@router.post("/login", response_model=TokenResponse)
-@limiter.limit("10/minute")
-def login(request: Request, body: LoginRequest):
+def _authenticate(password: str, client_host: str) -> TokenResponse:
+    """Verify the password and mint a token. Runs on the login thread pool."""
     hashes = _password_hashes()
 
     # First match wins, primary first. Stopping at a match is fine: the only
     # thing a shorter response reveals is which variable the password lives
     # in, and the only party who can observe that has just logged in with it.
-    candidate = _encode_candidate(body.password)
+    candidate = _encode_candidate(password)
     matched: tuple[str, str] | None = None
     if candidate is not None:
         matched = next(
@@ -170,7 +177,7 @@ def login(request: Request, body: LoginRequest):
             None,
         )
     if matched is None:
-        logger.warning("Failed login attempt from %s", _client_host(request))
+        logger.warning("Failed login attempt from %s", client_host)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password.",
@@ -181,7 +188,7 @@ def login(request: Request, body: LoginRequest):
     # the variable name; fingerprint binds the session to that hash so rotating
     # it revokes those sessions without touching JWT_SECRET_KEY.
     cred, password_hash = matched
-    logger.info("Login with %s from %s", cred, _client_host(request))
+    logger.info("Login with %s from %s", cred, client_host)
     token = create_access_token(
         data={
             "sub": "user",
@@ -191,3 +198,14 @@ def login(request: Request, body: LoginRequest):
         expires_delta=timedelta(hours=TOKEN_EXPIRE_HOURS),
     )
     return TokenResponse(access_token=token)
+
+
+@router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest):
+    return await anyio.to_thread.run_sync(
+        _authenticate,
+        body.password,
+        _client_host(request),
+        limiter=_login_limiter,
+    )

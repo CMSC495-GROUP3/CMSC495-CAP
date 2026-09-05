@@ -18,10 +18,20 @@ import hashlib
 import math
 import os
 import random
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Literal
+
+from policy_assistant.rag.config import (
+    OPENAI_CAPACITY_WAIT_SECONDS,
+    OPENAI_MAX_CONCURRENT_REQUESTS,
+    OPENAI_MAX_RETRIES,
+    OPENAI_STREAM_DEADLINE_SECONDS,
+    OPENAI_TIMEOUT_SECONDS,
+)
 
 ModelRole = Literal["answer", "utility"]
 
@@ -100,6 +110,9 @@ class OpenAIProvider(LLMProvider):
     EMBEDDING_DIMENSIONS = int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", "1536"))
 
     def __init__(self) -> None:
+        # Lazy: FakeProvider must import this module without openai/httpx installed
+        # (Docker smoke with LLM_PROVIDER=fake). Keep both imports here.
+        import httpx
         from openai import OpenAI
 
         api_key = os.getenv("OPENAI_API_KEY")
@@ -108,7 +121,33 @@ class OpenAIProvider(LLMProvider):
                 "OPENAI_API_KEY is required when LLM_PROVIDER=openai. "
                 "Set it in .env — see .env.example."
             )
-        self._client = OpenAI(api_key=api_key)
+        # read bounds idle time between streamed chunks; connect stays short so
+        # a black-holed DNS or TCP handshake fails fast rather than eating a
+        # THREADPOOL_TOKENS slot for the full read timeout.
+        self._client = OpenAI(
+            api_key=api_key,
+            timeout=httpx.Timeout(
+                connect=5.0,
+                read=OPENAI_TIMEOUT_SECONDS,
+                write=OPENAI_TIMEOUT_SECONDS,
+                pool=5.0,
+            ),
+            max_retries=OPENAI_MAX_RETRIES,
+        )
+        if OPENAI_MAX_CONCURRENT_REQUESTS < 1:
+            raise RuntimeError("OPENAI_MAX_CONCURRENT_REQUESTS must be at least 1")
+        self._capacity = threading.BoundedSemaphore(OPENAI_MAX_CONCURRENT_REQUESTS)
+
+    @contextmanager
+    def _request_slot(self):
+        """Bound provider occupancy without tying up the whole app thread pool."""
+        acquired = self._capacity.acquire(timeout=OPENAI_CAPACITY_WAIT_SECONDS)
+        if not acquired:
+            raise RuntimeError("OpenAI provider is at its configured concurrency limit")
+        try:
+            yield
+        finally:
+            self._capacity.release()
 
     def _model_for(self, role: ModelRole) -> str:
         return self.ANSWER_MODEL if role == "answer" else self.UTILITY_MODEL
@@ -120,10 +159,11 @@ class OpenAIProvider(LLMProvider):
         return f"{self.name}:{self.ANSWER_MODEL}"
 
     def embed(self, text: str) -> list[float]:
-        response = self._client.embeddings.create(
-            model=self.EMBEDDING_MODEL,
-            input=text,
-        )
+        with self._request_slot():
+            response = self._client.embeddings.create(
+                model=self.EMBEDDING_MODEL,
+                input=text,
+            )
         return response.data[0].embedding
 
     def embedding_dimensions(self) -> int:
@@ -136,11 +176,12 @@ class OpenAIProvider(LLMProvider):
         role: ModelRole = "utility",
         temperature: float = 0.0,
     ) -> str:
-        response = self._client.chat.completions.create(
-            model=self._model_for(role),
-            messages=messages,
-            temperature=temperature,
-        )
+        with self._request_slot():
+            response = self._client.chat.completions.create(
+                model=self._model_for(role),
+                messages=messages,
+                temperature=temperature,
+            )
         return response.choices[0].message.content or ""
 
     def stream(
@@ -150,16 +191,25 @@ class OpenAIProvider(LLMProvider):
         role: ModelRole = "answer",
         temperature: float = 0.0,
     ) -> Iterator[str]:
-        stream = self._client.chat.completions.create(
-            model=self._model_for(role),
-            messages=messages,
-            temperature=temperature,
-            stream=True,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
+        with self._request_slot():
+            stream = self._client.chat.completions.create(
+                model=self._model_for(role),
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+            )
+            deadline = time.monotonic() + OPENAI_STREAM_DEADLINE_SECONDS
+            try:
+                for chunk in stream:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("OpenAI stream exceeded its configured deadline")
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
 
 
 class FakeProvider(LLMProvider):
