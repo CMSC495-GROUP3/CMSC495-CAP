@@ -10,9 +10,23 @@
 # deploy dropped in-flight requests and forced a certificate reload for
 # README-only merges.
 #
+# Progress is tracked in refs/deployed/main, not HEAD. The script
+# fast-forwards HEAD before building, so a failed build would otherwise look
+# like "nothing to deploy" on the next tick while the stack stayed stale.
+# After AUTO_DEPLOY_MAX_FAILURES consecutive failures on the same commit
+# (default 5; 0 disables the cap), the tick stays red without rebuilding.
+#
 # Everything lives in main() so bash parses the whole file before running
 # any of it: the fast-forward below replaces this very file.
 set -euo pipefail
+
+DEPLOYED_REF=refs/deployed/main
+FAILURE_STATE_FILE=.git/auto-deploy-failures
+# Override on the host if a broken commit should keep retrying (0) or give up sooner.
+MAX_FAILURES=${AUTO_DEPLOY_MAX_FAILURES:-5}
+# Never auto-load an untracked docker-compose.override.yml from the host.
+COMPOSE_FILE=docker-compose.yml
+export COMPOSE_FILE
 
 # Nginx answers /api/health by proxying to Uvicorn, so one request through
 # the web container checks both services and the hop between them. The API
@@ -22,6 +36,38 @@ set -euo pipefail
 # listens on IPv4 only, so the name form is refused on every attempt.
 healthy() {
   docker compose exec -T web wget -qO /dev/null http://127.0.0.1/api/health 2>/dev/null
+}
+
+mark_deployed() {
+  local tip=$1
+  git update-ref "$DEPLOYED_REF" "$tip"
+  rm -f "$FAILURE_STATE_FILE"
+}
+
+failure_count_for() {
+  local tip=$1
+  local prev_sha prev_count
+  if [ -f "$FAILURE_STATE_FILE" ]; then
+    read -r prev_sha prev_count < "$FAILURE_STATE_FILE" || true
+    if [ "${prev_sha:-}" = "$tip" ]; then
+      echo "${prev_count:-0}"
+      return
+    fi
+  fi
+  echo 0
+}
+
+bump_failure() {
+  local tip=$1
+  local count=1
+  local prev_sha prev_count
+  if [ -f "$FAILURE_STATE_FILE" ]; then
+    read -r prev_sha prev_count < "$FAILURE_STATE_FILE" || true
+    if [ "${prev_sha:-}" = "$tip" ]; then
+      count=$((prev_count + 1))
+    fi
+  fi
+  echo "$tip $count" > "$FAILURE_STATE_FILE"
 }
 
 main() {
@@ -42,12 +88,25 @@ main() {
   fi
 
   git fetch --quiet origin main
-  old=$(git rev-parse HEAD)
+  # A hand-edited checkout on the host is a problem to fix, not to deploy
+  # over. Check before even the health-only path. Include untracked,
+  # non-ignored files: they can enter a Docker build context even though
+  # `git diff` cannot see them.
+  if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+    echo "checkout has local changes; refusing to deploy" >&2
+    git status --short --untracked-files=all >&2
+    exit 1
+  fi
+
+  # Last commit that passed the post-deploy health probe (or a no-rebuild
+  # fast-forward). Missing means "never recorded a success", so the next
+  # tick rebuilds; deleting the ref by hand forces a full redeploy.
+  deployed=$(git rev-parse -q --verify "$DEPLOYED_REF" 2>/dev/null || true)
   new=$(git rev-parse origin/main)
-  if [ "$old" = "$new" ]; then
+  if [ -n "$deployed" ] && [ "$deployed" = "$new" ]; then
     # Nothing to deploy. Probe anyway, so a stack that an earlier run left
     # broken keeps this unit red on every tick instead of turning green as
-    # soon as the head stops moving.
+    # soon as the tip stops moving.
     if ! healthy; then
       echo "nothing to deploy, but the stack does not answer /api/health" >&2
       exit 1
@@ -55,7 +114,13 @@ main() {
     exit 0
   fi
 
-  changed=$(git diff --name-only "$old" "$new")
+  if [ -n "$deployed" ]; then
+    changed=$(git diff --name-only "$deployed" "$new")
+  else
+    # Empty tree: every path counts as changed so a missing ref rebuilds both
+    # images (first success after install, or after `git update-ref -d`).
+    changed=$(git diff --name-only "$(git hash-object -t tree /dev/null)" "$new")
+  fi
   services=()
   grep -qE '^(Dockerfile|requirements/|policy_assistant/)' <<<"$changed" && services+=(api)
   grep -qE '^web/' <<<"$changed" && services+=(web)
@@ -70,16 +135,30 @@ main() {
   reload_caddy=
   grep -qE '^Caddyfile$' <<<"$changed" && reload_caddy=1
 
-  # A hand-edited checkout on the host is a problem to fix, not to deploy
-  # over. Stop before touching anything.
-  if ! git diff --quiet HEAD; then
-    echo "checkout has local changes; refusing to deploy" >&2
-    git status --short >&2
+  # Deleting the deployed ref is the documented force-redeploy operation.
+  # It must also clear a retry cap for the same commit.
+  if [ -z "$deployed" ]; then
+    rm -f "$FAILURE_STATE_FILE"
+  fi
+
+  failures=$(failure_count_for "$new")
+  if [ "$MAX_FAILURES" -gt 0 ] && [ "$failures" -ge "$MAX_FAILURES" ]; then
+    echo "skipping rebuild of ${new:0:7}: already failed ${failures} times (AUTO_DEPLOY_MAX_FAILURES=${MAX_FAILURES})" >&2
     exit 1
   fi
+
   git merge --ff-only --quiet origin/main
-  echo "deploy ${old:0:7} -> ${new:0:7}: ${services[*]:-nothing to rebuild}${reload_caddy:+, reload caddy}"
+  from=${deployed:-none}
+  if [ "$from" != none ]; then
+    from=${from:0:7}
+  fi
+  echo "deploy ${from} -> ${new:0:7}: ${services[*]:-nothing to rebuild}${reload_caddy:+, reload caddy}"
   if [ ${#services[@]} -eq 0 ] && [ -z "$reload_caddy" ]; then
+    if ! healthy; then
+      echo "no rebuild required, but the stack does not answer /api/health" >&2
+      exit 1
+    fi
+    mark_deployed "$new"
     exit 0
   fi
 
@@ -88,11 +167,20 @@ main() {
     [ -n "$recreate_caddy" ] && up+=(caddy)
     # --pull refreshes base images so a Dependabot Docker bump takes effect.
     # --no-deps keeps `up` from restarting Caddy when only api or web changed.
-    docker compose build --pull "${services[@]}"
-    docker compose up -d --no-deps "${up[@]}"
+    if ! docker compose build --pull "${services[@]}"; then
+      bump_failure "$new"
+      exit 1
+    fi
+    if ! docker compose up -d --no-deps "${up[@]}"; then
+      bump_failure "$new"
+      exit 1
+    fi
   fi
   if [ -n "$reload_caddy" ]; then
-    docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+    if ! docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile; then
+      bump_failure "$new"
+      exit 1
+    fi
   fi
 
   # Sixty seconds covers a cold Uvicorn start on a small instance and the
@@ -103,12 +191,14 @@ main() {
       # Only now is the previous image safe to drop. Until the probe passes,
       # retagging it is the quickest way back.
       docker image prune -f >/dev/null
+      mark_deployed "$new"
       exit 0
     fi
     sleep 2
   done
   echo "stack did not answer /api/health after the deploy" >&2
   docker compose logs --tail 30 web api >&2
+  bump_failure "$new"
   exit 1
 }
 

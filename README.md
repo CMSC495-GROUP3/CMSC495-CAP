@@ -541,7 +541,12 @@ locally, plus one variable in `.env`.
 
 From then on the instance polls upstream `main` every two minutes. When the
 branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout and acts on
-what changed:
+what changed since the last *successful* deploy, recorded in the local ref
+`refs/deployed/main` (not in `HEAD`). The script advances that ref only after
+`/api/health` passes, or after a docs-only fast-forward that needs no rebuild.
+A failed `docker compose build` or `up` therefore leaves the ref behind, and
+the next tick retries the same tip instead of treating the fast-forwarded
+`HEAD` as already deployed.
 
 | Changed path                                       | What happens                                                                 |
 | -------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -549,17 +554,60 @@ what changed:
 | `web/`                                             | rebuild and recreate `web`                                                   |
 | `docker-compose.yml`                               | rebuild both images, `up` recreates whatever the file changed                |
 | `Caddyfile`                                        | `caddy reload` inside the running container; certificate and listeners stay  |
-| anything else                                      | nothing                                                                      |
+| anything else                                      | advance `refs/deployed/main` only; no container rebuild                      |
 
 After a deploy it requests `/api/health` through the `web` container, so the
 probe covers Nginx, Uvicorn, and the hop between them, and it keeps the old
 images until that probe passes. On a tick with nothing to deploy it still runs
 the probe, so a broken stack keeps the service red on every tick rather than
-going green once `main` stops moving. Caddy keeps running through an `api` or
-`web` deploy, so the certificate and in-flight requests survive.
-`sudo journalctl -u auto-deploy.service` shows what the last run did. Run the
-script by hand as `ubuntu`, not under `sudo`; it refuses to run on a checkout
-that is not on `main` or that has local edits.
+going green once `main` stops moving. After five consecutive failures on the
+same commit (`AUTO_DEPLOY_MAX_FAILURES`, or `0` to keep retrying), the tick
+stays red and logs `skipping rebuild` without burning another build loop.
+Caddy keeps running through an `api` or `web` deploy, so the certificate and
+in-flight requests survive. `sudo journalctl -u auto-deploy.service` shows what
+the last run did. Run the script by hand as `ubuntu`, not under `sudo`; it
+refuses to run on a checkout that is not on `main` or that has local edits.
+
+To force a full redeploy of both images on the next tick (for example after
+deleting a bad image by hand), drop the success marker:
+
+```bash
+git update-ref -d refs/deployed/main
+```
+
+#### Upgrading an existing install
+
+Hosts that already run the older auto-deploy timer need a one-time handoff
+before the first tick that executes the retry-aware script. Without a seeded
+`refs/deployed/main`, that tick diffs against the empty tree, rebuilds both
+images with `--pull`, and recreates Caddy—risky on a near-full root disk.
+
+1. Confirm the checkout is clean under the new rule (untracked files count):
+
+   ```bash
+   cd /home/ubuntu/CMSC495-CAP && git status --porcelain --untracked-files=all
+   ```
+
+   Must print nothing. If it lists files, delete them or add them to
+   `.gitignore` in a separate PR first.
+
+2. Seed the deployed ref to the commit whose images are currently running
+   *before* the new retry logic is active on the host (while the old script is
+   still what the timer runs, immediately before merging the retry change):
+
+   ```bash
+   git update-ref refs/deployed/main "$(git rev-parse HEAD)"
+   ```
+
+3. Verify the ref before the first new deploy tick:
+
+   ```bash
+   git rev-parse refs/deployed/main
+   ```
+
+   It must match the running checkout (`git rev-parse HEAD`). After the upgrade
+   lands, watch two ticks of `sudo journalctl -u auto-deploy.service -f`; a
+   later idle tick should log `nothing to rebuild` and exit 0.
 
 The script only reacts to git. After editing `.env` on the instance, recreate
 the affected service yourself with `docker compose up -d <service>`.

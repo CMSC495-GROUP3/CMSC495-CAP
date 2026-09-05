@@ -196,6 +196,8 @@ jobs:
           fi
       - name: shellcheck
         run: shellcheck scripts/*.sh
+      - name: auto_deploy synthetic checks
+        run: bash scripts/test_auto_deploy.sh
       - name: hadolint (api)
         uses: hadolint/hadolint-action@v3.5.0
         with:
