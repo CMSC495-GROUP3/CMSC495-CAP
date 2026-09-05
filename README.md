@@ -180,8 +180,9 @@ With `SITE_ADDRESS` unset, Caddy serves plain HTTP on localhost, which is what
 7. The exchange, its sources, and its score are saved, so reopening a past
    conversation restores its citations and not just its text. First-turn
    answers are also cached for 24 hours under a key that includes the corpus
-   version and the prompt version, so re-ingestion or a prompt change
-   invalidates them with no cache-clearing code to get wrong.
+   version, prompt version, and retrieval settings (`SIMILARITY_THRESHOLD` and
+   `RETRIEVAL_K`), so re-ingestion or a behavior change invalidates them with
+   no cache-clearing code to get wrong.
 8. If the assistant refused, or the answer did not help, the employee can hand
    the question to a person from the same screen.
 

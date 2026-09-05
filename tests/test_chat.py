@@ -127,6 +127,59 @@ class TestChat:
         assert body["answer"].startswith("Sorry")
         assert _messages(conversation) == []
 
+    def test_follow_up_logs_the_condensed_query_like_stream(
+        self, client, auth, retrieval, conversation, monkeypatch
+    ):
+        """Raw follow-ups must not pollute question_hash; both routes agree."""
+        condensed = "How much parental leave do I get?"
+        provider = llm.get_provider()
+        original = provider.complete
+
+        def complete(messages, *, role="utility", **kwargs):
+            content = messages[0]["content"] if messages else ""
+            if role == "utility" and "Rewrite the follow-up question" in content:
+                return condensed
+            return original(messages, role=role, **kwargs)
+
+        monkeypatch.setattr(provider, "complete", complete)
+
+        stream_session = client.post(
+            "/api/conversations", json={"title": "stream"}, headers=auth
+        ).json()["session_id"]
+
+        opener = "tell me about parental leave"
+        follow_up = "how much do I get?"
+        for session_id in (conversation, stream_session):
+            assert (
+                client.post(
+                    "/api/chat",
+                    json={"question": opener, "session_id": session_id},
+                    headers=auth,
+                ).status_code
+                == 200
+            )
+
+        FAKE_DB["query_logs"]._docs.clear()
+
+        assert (
+            client.post(
+                "/api/chat",
+                json={"question": follow_up, "session_id": conversation},
+                headers=auth,
+            ).status_code
+            == 200
+        )
+        _ask(client, auth, follow_up, stream_session)
+
+        assert retrieval.calls[-2:] == [condensed, condensed]
+
+        chat_log, stream_log = list(FAKE_DB["query_logs"].find({}))
+        assert chat_log["question_raw"] == follow_up
+        assert chat_log["question_condensed"] == condensed
+        assert chat_log["question_condensed"] != follow_up
+        assert stream_log["question_condensed"] == condensed
+        assert chat_log["question_hash"] == stream_log["question_hash"]
+
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
 

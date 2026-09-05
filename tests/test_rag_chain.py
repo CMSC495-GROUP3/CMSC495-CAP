@@ -105,7 +105,7 @@ class _BrokenProvider:
 
 class TestConversationHelpers:
     def test_first_turn_is_not_rewritten_and_makes_no_model_call(self, monkeypatch):
-        monkeypatch.setattr(rag_chain, "get_provider", lambda: _BrokenProvider())
+        monkeypatch.setattr(rag_chain, "get_provider", _BrokenProvider)
         assert condense_question("how much PTO?", []) == "how much PTO?"
 
     def test_follow_up_is_rewritten_by_the_utility_model(self):
@@ -114,7 +114,7 @@ class TestConversationHelpers:
         assert rewritten and rewritten != "how much do I get?"
 
     def test_rewrite_falls_back_to_raw_question_when_provider_fails(self, monkeypatch):
-        monkeypatch.setattr(rag_chain, "get_provider", lambda: _BrokenProvider())
+        monkeypatch.setattr(rag_chain, "get_provider", _BrokenProvider)
         history = [{"role": "user", "content": "tell me about parental leave"}]
         assert condense_question("how much do I get?", history) == "how much do I get?"
 
@@ -124,7 +124,7 @@ class TestConversationHelpers:
         assert all(f and "\n" not in f for f in follow_ups)
 
     def test_follow_ups_are_optional(self, monkeypatch):
-        monkeypatch.setattr(rag_chain, "get_provider", lambda: _BrokenProvider())
+        monkeypatch.setattr(rag_chain, "get_provider", _BrokenProvider)
         assert generate_follow_ups("q", "a") == []
 
 
