@@ -45,4 +45,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    groups:
+      docker:
+        patterns: ["*"]
     labels: [dependencies, infra]
