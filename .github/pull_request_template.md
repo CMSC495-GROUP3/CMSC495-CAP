@@ -40,9 +40,4 @@ Never claim manual, production, or CI evidence that was not actually obtained.
 Risks and Review Gate: Identify the part you are least sure about, tradeoffs,
 residual risks, dependencies, merge order, required reviewers, deployment or
 on-host validation, and the exact next action. Delete this section if none.
-
-If a later comment proposes closing an issue or PR, use all five exact H2
-headings in this order: "## Issue Description", "## Root Cause",
-"## Corrective Action", "## Objective Evidence", and
-"## State of Proposed Closure". Ordinary iteration replies can stay concise.
 -->
