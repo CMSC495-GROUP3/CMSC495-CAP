@@ -14,9 +14,13 @@ name: Live evaluation
 on:
   workflow_dispatch:
     inputs:
-      dataset:
-        description: Labeled question set to run
-        default: evaluation/questions.json
+      tier:
+        description: Evaluation tier (smoke = routine 20-case set; full = full-corpus coverage)
+        type: choice
+        options:
+          - smoke
+          - full
+        default: smoke
         required: true
 
 permissions:
@@ -27,7 +31,7 @@ jobs:
     name: Run the labeled set against the real services
     runs-on: ubuntu-latest
     environment: evaluation
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -36,15 +40,41 @@ jobs:
           cache: pip
           cache-dependency-path: requirements/*.txt
       - run: pip install -r requirements/api.txt -r requirements/ingest.txt
+      - name: Show selected tier and case count
+        id: select
+        env:
+          EVAL_TIER: ${{ inputs.tier }}
+        run: |
+          python - <<'PY' | tee selection.txt
+          import os
+          from policy_assistant.rag.evaluation import load_cases, resolve_dataset
+
+          tier, dataset = resolve_dataset(os.environ["EVAL_TIER"])
+          cases = load_cases(dataset)
+          print(f"tier={tier}")
+          print(f"dataset={dataset}")
+          print(f"cases={len(cases)}")
+          PY
+          {
+            echo "## Live evaluation selection"
+            echo
+            echo '```'
+            cat selection.txt
+            echo '```'
+            echo
+            echo "Paid provider calls start in the next step."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Run the evaluation
         env:
           LLM_PROVIDER: openai
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB: ${{ secrets.MONGODB_DB }}
+          EVAL_TIER: ${{ inputs.tier }}
         run: |
           python -m policy_assistant.rag.evaluation \
-            --dataset "${{ inputs.dataset }}" \
+            --tier "$EVAL_TIER" \
+            --yes \
             --output evaluation/results.json | tee evaluation-summary.txt
       - name: Summary
         if: always()
@@ -66,4 +96,5 @@ jobs:
           path: |
             evaluation/results.json
             evaluation-summary.txt
+            selection.txt
           retention-days: 90

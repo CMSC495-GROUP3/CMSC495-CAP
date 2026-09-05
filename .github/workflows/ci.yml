@@ -92,22 +92,27 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Validate the labeled question set
-        # The loader has no third-party imports, so nothing is installed here.
+      - name: Validate the labeled question sets
+        # The loader has no third-party imports (evaluation.py pulls in
+        # documents.py, which is also stdlib-only), so nothing is installed here.
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           from collections import Counter
 
-          from policy_assistant.rag.evaluation import load_cases
+          from policy_assistant.rag.evaluation import EVALUATION_TIERS, load_cases
 
-          cases = load_cases("evaluation/questions.json")
-          counts = Counter(case["category"] for case in cases)
-          print(f"## Evaluation dataset: {len(cases)} cases")
+          print("## Evaluation datasets")
           print()
-          print("| Category | Cases |")
-          print("|---|---:|")
-          for category, count in sorted(counts.items()):
-              print(f"| {category} | {count} |")
+          for tier, path in sorted(EVALUATION_TIERS.items()):
+              cases = load_cases(path)
+              counts = Counter(case["category"] for case in cases)
+              print(f"### {tier}: {len(cases)} cases (`{path.name}`)")
+              print()
+              print("| Category | Cases |")
+              print("|---|---:|")
+              for category, count in sorted(counts.items()):
+                  print(f"| {category} | {count} |")
+              print()
           PY
           cat "$GITHUB_STEP_SUMMARY"
 

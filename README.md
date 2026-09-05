@@ -67,7 +67,7 @@ hosted around the clock, so a connection timeout means it is off, not broken.
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                                         | running against real services, checks, conventions, and the things that bite |
 | [SECURITY.md](SECURITY.md)                                                 | reporting a vulnerability and what the Security workflow scans               |
-| [evaluation/README.md](evaluation/README.md)                               | the labeled question set and how to score the live system                    |
+| [evaluation/README.md](evaluation/README.md)                               | smoke and full-corpus labeled sets and how to score the live system          |
 | [scripts/loadtest/RESULTS.md](scripts/loadtest/RESULTS.md)                 | throughput measurements and the reasoning behind `THREADPOOL_TOKENS`         |
 | [.agents/skills/CMSC495-CAP/SKILL.md](.agents/skills/CMSC495-CAP/SKILL.md) | the condensed version of all this for coding agents                          |
 
@@ -797,13 +797,13 @@ policy_assistant/   the Python application, one package, absolute imports only
     cache.py          embedding and answer caches, keyed on corpus and prompt version
     documents.py      source-format abstraction
     mongo.py          client construction and the connection-pool arithmetic
-    evaluation.py     runs and scores evaluation/questions.json
+    evaluation.py     runs and scores smoke/full evaluation tiers
     seed_documents.py, embed_documents.py   offline ingestion
 web/                React 19, TypeScript, Tailwind 4, Vite; served by Nginx
 tests/              pytest suite; conftest.py stubs every external service
 scripts/            auto_deploy.sh and its systemd units, deploy.sh, audit.sh, and the
                     load-test harness in loadtest/
-evaluation/         20 labeled questions and how to score them
+evaluation/         smoke (20) and full-corpus labeled questions plus scoring notes
 data/               37 fictional sample policies
 docs/brand/         the Sourcebook icon
 requirements/       base.txt shared; api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)

@@ -1,7 +1,14 @@
 # AI Evaluation
 
-This folder contains the first labeled evaluation set required by the Week 3
-backlog. It has 20 questions:
+This folder holds the labeled evaluation sets used to measure retrieval and
+refusal quality against the sample policy corpus.
+
+## Tiers
+
+| Tier | File | Purpose |
+|---|---|---|
+| `smoke` | `questions.json` | Bounded routine set (20 cases). Inexpensive for repeated live checks. |
+| `full` | `questions_full.json` | One supported retrieval question for every sample policy, plus unanswerable, ambiguous, and prompt-injection coverage. |
 
 | Category | Cases | Expected behavior |
 |---|---:|---|
@@ -10,19 +17,29 @@ backlog. It has 20 questions:
 | Ambiguous | 3 | Identify the relevant policy and request the missing detail |
 | Prompt injection | 3 | Reject the instruction and provide no unsupported answer |
 
+The full tier always treats tuition and dress-code questions as answerable because those policies are in the sample corpus.
+
 ## Automated checks
 
-`make check` validates the dataset structure, case counts, unique identifiers,
-and metric calculations. Those tests use no external service.
+`make check` validates both datasets: structure, unique identifiers, metric
+calculations, and that every non-empty `expected_sources` title exists in
+`data/sample-policies/`. Those tests use no external service and make no paid
+calls.
 
 ## Run the evaluation
 
 The live evaluation requires the same `.env`, seeded policy corpus, MongoDB
-Atlas connection, and model provider used by the application.
+Atlas connection, and model provider used by the application. Choose the tier
+explicitly. The runner prints the case count and asks for confirmation before
+any paid provider call (`--yes` skips the prompt for CI).
 
 ```bash
-.venv/bin/python -m policy_assistant.rag.evaluation
+.venv/bin/python -m policy_assistant.rag.evaluation --tier smoke
+.venv/bin/python -m policy_assistant.rag.evaluation --tier full --yes
 ```
+
+The GitHub Actions workflow "Live evaluation" takes the same `tier` input and
+prints the selected case count in the job log before execution.
 
 The command prints the summary metrics and writes detailed answers to
 `evaluation/results.json`. That output is intentionally excluded from Git

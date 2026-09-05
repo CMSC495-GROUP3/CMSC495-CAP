@@ -45,12 +45,12 @@ policy_assistant/   the Python application, one package, absolute imports only
     cache.py        embedding and answer caches, keyed on prompt, corpus, and retrieval settings
     documents.py    source-format parsing
     embed_documents.py, seed_documents.py   offline ingestion
-    evaluation.py   runs and scores evaluation/questions.json
+    evaluation.py   runs and scores smoke/full evaluation tiers
 web/src/            components/{Auth,Chat,Documents,Layout}, hooks/useChat.ts, pages/, api/client.ts, config.ts
 tests/              conftest.py stubs Mongo, the model, vector search, and index creation before importing main
 scripts/loadtest/   fakemongo.py (partial in-memory Mongo), server.py (the stub app), run.py
 scripts/            auto_deploy.sh and its systemd/ units (the EC2 host runs it on a timer), deploy.sh, audit.sh
-evaluation/         20 labeled questions and the metric definitions
+evaluation/         smoke (20) and full-corpus labeled questions plus metric definitions
 data/               sample policy corpus
 requirements/       base.txt, api.txt (the Docker image), ingest.txt, lint.txt, dev.txt (everything)
 pyproject.toml      ruff and pytest settings
@@ -150,9 +150,10 @@ gitleaks. PR checks enforce the title format and a filled-in description.
   database. Not on internals.
 - `scripts/loadtest/fakemongo.py` implements only the Mongo operations the
   app uses. Add what you need there and keep it visibly partial.
-- If a change alters what the assistant answers or refuses, update
-  `evaluation/questions.json` or say in the PR why not. The dataset must stay
-  at 20 cases with the documented category mix; a test checks it.
+- If a change alters what the assistant answers or refuses, update the smoke
+  and/or full evaluation tiers (`evaluation/questions.json`,
+  `evaluation/questions_full.json`) or say in the PR why not. Smoke stays at
+  20 cases; full must cover every sample policy title. Tests check both.
 
 ## Rules that are easy to break
 

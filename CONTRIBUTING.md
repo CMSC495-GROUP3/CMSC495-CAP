@@ -102,7 +102,7 @@ so they run on fork PRs too.
 |---|---|---|
 | CI | Python lint and format | a `ruff check` finding or an unformatted file |
 | CI | Python tests (3.11 through 3.14) | a failing test, or coverage under 80% on any version |
-| CI | Evaluation dataset | `evaluation/questions.json` that `load_cases` rejects |
+| CI | Evaluation dataset | `evaluation/questions.json` or `questions_full.json` that `load_cases` rejects |
 | CI | Web lint, types, build | ESLint, `tsc -b`, or `vite build` |
 | CI | Docker images and Compose | either image failing to build, the API image failing to import `policy_assistant.api.main`, an invalid `docker-compose.yml`, or `scripts/test_proxy_chain.py` failing the live Caddy → Nginx → Uvicorn client-IP / rate-limit check |
 | CI | Shell, Dockerfile, workflow lint | shellcheck on `scripts/*.sh`, hadolint on both Dockerfiles, actionlint on the workflows, or a `.env`, key, or build output that got committed |

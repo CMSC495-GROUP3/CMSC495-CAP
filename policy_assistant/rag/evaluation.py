@@ -3,15 +3,24 @@
 The unit tests exercise dataset validation and metric calculations without any
 network access. The command line runner uses the configured MongoDB and model
 provider, so it is intentionally separate from ``make check``.
+
+Two tiers are supported:
+
+* ``smoke`` — the bounded routine set in ``evaluation/questions.json``
+* ``full`` — one supported retrieval question per sample policy, plus refusal,
+  ambiguity, and prompt-injection coverage
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from policy_assistant.rag.documents import parse_document
 
 ALLOWED_CATEGORIES = {
     "answerable",
@@ -29,8 +38,65 @@ REQUIRED_FIELDS = {
     "expected_behavior",
 }
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CORPUS_DIR = REPO_ROOT / "data" / "sample-policies"
+EVALUATION_TIERS = {
+    "smoke": REPO_ROOT / "evaluation" / "questions.json",
+    "full": REPO_ROOT / "evaluation" / "questions_full.json",
+}
+# Smoke stays at 20 cases with the corpus-reconciled category mix.
+SMOKE_CASE_COUNT = 20
+SMOKE_CATEGORY_MIX = {
+    "answerable": 12,
+    "unanswerable": 2,
+    "ambiguous": 3,
+    "prompt_injection": 3,
+}
 
-def load_cases(path: str | Path) -> list[dict[str, Any]]:
+
+def sample_policy_titles(corpus_dir: str | Path | None = None) -> set[str]:
+    """Return Title headers from the sample policy corpus."""
+    root = Path(corpus_dir) if corpus_dir is not None else DEFAULT_CORPUS_DIR
+    if not root.is_dir():
+        raise ValueError(f"Sample policy corpus not found: {root}")
+
+    titles: set[str] = set()
+    for path in sorted(root.iterdir()):
+        if not path.is_file() or path.name.startswith("."):
+            continue
+        document = parse_document(path.name, path.read_text(encoding="utf-8"))
+        title = document.get("title")
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError(f"Sample policy {path.name} is missing a Title header")
+        titles.add(title.strip())
+    if not titles:
+        raise ValueError(f"No sample policies found in {root}")
+    return titles
+
+
+def validate_sources_against_corpus(
+    cases: list[dict[str, Any]],
+    corpus_dir: str | Path | None = None,
+) -> None:
+    """Reject expected_sources that do not match a sample policy Title."""
+    titles = sample_policy_titles(corpus_dir)
+    unknown: list[str] = []
+    for case in cases:
+        for source in case["expected_sources"]:
+            if source not in titles:
+                unknown.append(f"{case['id']}: {source}")
+    if unknown:
+        raise ValueError(
+            "Evaluation expected_sources missing from sample corpus: " + "; ".join(unknown)
+        )
+
+
+def load_cases(
+    path: str | Path,
+    *,
+    corpus_dir: str | Path | None = None,
+    require_corpus_titles: bool = True,
+) -> list[dict[str, Any]]:
     """Load a JSON evaluation set and reject incomplete or duplicate cases."""
     dataset_path = Path(path)
     cases = json.loads(dataset_path.read_text(encoding="utf-8"))
@@ -66,7 +132,23 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
         if not isinstance(case["expected_behavior"], str) or not case["expected_behavior"].strip():
             raise ValueError(f"Evaluation case {case_id} has empty expected behavior")
 
+    if require_corpus_titles:
+        validate_sources_against_corpus(cases, corpus_dir=corpus_dir)
+
     return cases
+
+
+def resolve_dataset(tier: str | None = None, dataset: Path | None = None) -> tuple[str, Path]:
+    """Map an explicit tier or dataset path to ``(tier_label, path)``."""
+    if tier is not None and dataset is not None:
+        raise ValueError("Specify either --tier or --dataset, not both")
+    if tier is not None:
+        if tier not in EVALUATION_TIERS:
+            raise ValueError(f"Unknown evaluation tier: {tier}")
+        return tier, EVALUATION_TIERS[tier]
+    if dataset is not None:
+        return "custom", Path(dataset)
+    return "smoke", EVALUATION_TIERS["smoke"]
 
 
 def _percentage(outcomes: Iterable[bool]) -> float | None:
@@ -208,13 +290,44 @@ def run_evaluation(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [run_live_case(case) for case in cases]
 
 
-def main() -> int:
+def _confirm_paid_run(tier: str, case_count: int, dataset: Path, assume_yes: bool) -> bool:
+    """Show the selected tier and case count before any paid provider call."""
+    print(f"Evaluation tier: {tier}")
+    print(f"Dataset: {dataset}")
+    print(f"Cases selected: {case_count}")
+    if assume_yes:
+        return True
+    if not sys.stdin.isatty():
+        print(
+            "Refusing to start a paid evaluation without an interactive confirmation or --yes.",
+            file=sys.stderr,
+        )
+        return False
+    try:
+        reply = (
+            input("Continue with live evaluation against paid providers? [y/N] ").strip().lower()
+        )
+    except EOFError:
+        print(
+            "Refusing to start a paid evaluation without an interactive confirmation or --yes.",
+            file=sys.stderr,
+        )
+        return False
+    return reply in {"y", "yes"}
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--tier",
+        choices=sorted(EVALUATION_TIERS),
+        help="Named evaluation tier (smoke or full). Preferred over --dataset.",
+    )
+    source.add_argument(
         "--dataset",
         type=Path,
-        default=Path("evaluation/questions.json"),
-        help="Path to the labeled question set",
+        help="Explicit path to a labeled question set (mutually exclusive with --tier)",
     )
     parser.add_argument(
         "--output",
@@ -222,11 +335,29 @@ def main() -> int:
         default=Path("evaluation/results.json"),
         help="Where to write detailed results and metrics",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip the interactive confirmation after printing the case count",
+    )
+    args = parser.parse_args(argv)
 
-    cases = load_cases(args.dataset)
+    # Argparse owns CLI exclusivity; resolve_dataset still rejects both for
+    # library callers and defaults to the smoke tier when neither is set.
+    tier, dataset = resolve_dataset(args.tier, args.dataset)
+
+    cases = load_cases(dataset)
+    if not _confirm_paid_run(tier, len(cases), dataset, assume_yes=args.yes):
+        print("Aborted before paid execution.")
+        return 1
+
     results = run_evaluation(cases)
-    report = {"metrics": score_results(cases, results), "results": results}
+    report = {
+        "tier": tier,
+        "dataset": str(dataset),
+        "metrics": score_results(cases, results),
+        "results": results,
+    }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
