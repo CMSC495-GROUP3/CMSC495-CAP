@@ -39,6 +39,8 @@ from policy_assistant.rag.config import (
     ANSWER_CACHE_TTL_SECONDS,
     CACHE_ENABLED,
     PROMPT_VERSION,
+    RETRIEVAL_K,
+    SIMILARITY_THRESHOLD,
 )
 from policy_assistant.rag.llm import get_provider
 from policy_assistant.rag.mongo import get_collection
@@ -136,12 +138,16 @@ def answer_cache_key(question: str, corpus_version: str) -> str:
     Corpus version so re-ingestion invalidates. Answer-model fingerprint so a
     model swap invalidates. Prompt version so editing the system prompt
     invalidates — otherwise a prompt fix would be masked until the TTL expired.
+    Similarity threshold and retrieval k so tuning either (which changes
+    refusals and what the model sees) does not keep serving the old answer.
     """
     return _digest(
         normalize(question),
         corpus_version,
         get_provider().answer_fingerprint(),
         PROMPT_VERSION,
+        str(SIMILARITY_THRESHOLD),
+        str(RETRIEVAL_K),
     )
 
 
