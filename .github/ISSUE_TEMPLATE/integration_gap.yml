@@ -1,0 +1,71 @@
+name: Integration gap
+description: Report a defect where two or more Sourcebook components do not work together as intended.
+title: "integration: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for cross-component behavior that is individually valid
+        but fails at an interface or handoff. Do not include credentials,
+        password hashes, private policy text, or other sensitive data.
+
+  - type: textarea
+    id: observed_behavior
+    attributes:
+      label: Observed behavior
+      description: Describe what happens at the integration boundary and its user or operational impact.
+      placeholder: When component A hands off to component B, ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected_boundary
+    attributes:
+      label: Affected boundary and components
+      description: Name both sides of the boundary, the interface between them, and any relevant files, routes, jobs, or services.
+      placeholder: Web client -> API /api/...; API -> provider; workflow -> deployment host; ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest deterministic sequence that exposes the gap.
+      placeholder: |
+        1. Start ...
+        2. Submit ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective_evidence
+    attributes:
+      label: Objective evidence
+      description: Provide sanitized logs, test output, screenshots, response codes, or commit details that demonstrate the behavior.
+      placeholder: Include the commit or branch and redact sensitive values.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that would demonstrate the integration gap is corrected without regressing either component.
+      placeholder: |
+        - [ ] The handoff preserves ...
+        - [ ] The failure path returns ...
+        - [ ] Focused regression coverage proves ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: ownership_handoff
+    attributes:
+      label: Ownership and handoff
+      description: Propose the relevant component owners, dependencies, sequencing, and the person or role needed for the next gate. This does not assign anyone automatically.
+      placeholder: Component A owner reviews first; component B owner validates after ...
+    validations:
+      required: true
