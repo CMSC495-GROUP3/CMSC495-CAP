@@ -20,9 +20,16 @@ at least 1,250 hours in the prior 12 months may request up to 12 weeks of
 company medical and family leave in a rolling 12-month period for:
 
 - the employee's own serious health condition;
-- bonding with a newborn, newly adopted child, or newly placed foster child;
 - caring for a spouse, domestic partner, child, or parent with a serious health
   condition.
+
+Bonding with a newborn, newly adopted child, or newly placed foster child is
+governed by the Parental Leave Policy. This Medical and Family Leave Policy does
+not add a second company bonding-leave entitlement or stack additional Meridian
+bonding pay or weeks on top of Parental Leave. When People Operations determines
+that FMLA or a state family-leave program applies to the same bonding absence,
+those statutory rights may run concurrently with Parental Leave rather than as
+extra company bonding weeks.
 
 Part-time and newly hired employees should contact People Operations to learn
 what, if any, analogous company leave Meridian can offer in their situation.
@@ -50,6 +57,7 @@ own—confirm with People Operations before making coverage commitments.
 
 ## Related policies
 
-See the Sick and Safe Leave Policy for short-term illness and safety absences
-(separate from PTO), and the Benefits Continuation (COBRA) Policy if coverage
-would otherwise end.
+See the Paid Time Off (PTO) Policy and Sick and Safe Leave Policy for short-term
+illness and safety absences drawn from the combined PTO bank, the Parental Leave
+Policy for Meridian bonding leave and pay, and the Benefits Continuation
+(COBRA) Policy if coverage would otherwise end.

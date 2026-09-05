@@ -44,12 +44,16 @@ Health, dental, and vision coverage continue unchanged. Your share of premiums
 continues to be deducted from pay; if your pay is fully replaced there is no
 disruption. 401(k) contributions and company match continue on paid leave.
 
-## Interaction with FMLA and state leave
+## Interaction with FMLA, state leave, and company medical leave
+
+The Parental Leave Policy controls Meridian's company bonding leave and pay for
+birth, adoption, and foster placement. The Medical and Family Leave Policy does
+not stack additional company bonding weeks or pay on top of this entitlement.
 
 Where FMLA or a state paid family leave program applies, Meridian's parental
-leave runs concurrently rather than in addition. Where a state program pays a
-partial wage, Meridian tops up to 100% of base salary. You will never receive
-less than this policy provides.
+leave runs concurrently rather than in addition when People Operations says so.
+Where a state program pays a partial wage, Meridian tops up to 100% of base
+salary. You will never receive less than this policy provides.
 
 ## Returning to work
 

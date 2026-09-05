@@ -382,12 +382,13 @@
   {
     "id": "full_answerable_39",
     "category": "answerable",
-    "question": "How many hours of paid sick and safe leave can a full-time Meridian employee accrue in a calendar year?",
+    "question": "Does Meridian create a separate sick and safe leave bank, or do those absences use the PTO balance?",
     "expected_sources": [
-      "Sick and Safe Leave Policy"
+      "Sick and Safe Leave Policy",
+      "Paid Time Off (PTO) Policy"
     ],
     "expected_outcome": "answer",
-    "expected_behavior": "Answer up to 56 hours and cite the Sick and Safe Leave Policy."
+    "expected_behavior": "Answer that sick and safe leave use the combined PTO bank; the Sick and Safe Leave Policy is process and jurisdiction guidance, not a second accrual bank."
   },
   {
     "id": "full_answerable_40",
@@ -428,7 +429,7 @@
       "Paid Time Off (PTO) Policy"
     ],
     "expected_outcome": "answer",
-    "expected_behavior": "Answer no; sick and safe leave is a separate bank from PTO vacation/personal days."
+    "expected_behavior": "Answer yes; Meridian uses one combined PTO bank for vacation, personal days, and short-term illness/safe leave, with jurisdiction questions handled by People Operations."
   },
   {
     "id": "full_answerable_44",
@@ -450,6 +451,17 @@
     ],
     "expected_outcome": "answer",
     "expected_behavior": "Answer no; company medical and family leave is distinct from statutory FMLA, which People Operations evaluates separately."
+  },
+  {
+    "id": "full_answerable_46",
+    "category": "answerable",
+    "question": "If I take Meridian parental leave to bond with a newborn, does company medical and family leave add more bonding weeks on top?",
+    "expected_sources": [
+      "Parental Leave Policy",
+      "Medical and Family Leave Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer no; Parental Leave controls Meridian bonding leave and pay, Medical and Family Leave does not stack additional company bonding weeks, and FMLA or state leave may run concurrently only when People Operations says so."
   },
   {
     "id": "full_unanswerable_01",

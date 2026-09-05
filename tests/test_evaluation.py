@@ -336,7 +336,7 @@ def test_citation_correctness_passes_only_when_answer_names_expected_policy():
 
 
 def test_hr_lifecycle_policies_resolve_cross_policy_conflicts():
-    """Codex conflict gate: sick/PTO banks, severance/PTO, injury/safety, naming, COBRA, FMLA."""
+    """Conflict gate: combined PTO bank, parental bonding control, severance/PTO, injury/safety, COBRA, FMLA."""
     policy_dir = Path(__file__).resolve().parent.parent / "data" / "sample-policies"
     texts = {path.name: path.read_text(encoding="utf-8") for path in policy_dir.glob("*.md")}
     pto = texts["pto-policy.md"]
@@ -346,15 +346,17 @@ def test_hr_lifecycle_policies_resolve_cross_policy_conflicts():
     safety = texts["workplace-safety.md"]
     cobra = texts["benefits-continuation-cobra.md"]
     medical = texts["medical-and-family-leave.md"]
+    parental = texts["parental-leave.md"]
 
     new_policy_blob = sick + severance + injury + cobra + medical
     assert "Meridian Technologies" not in new_policy_blob
     assert "Meridian Systems" in sick
-    assert "separate" in sick.casefold() and "pto" in sick.casefold()
-    assert "Sick and Safe Leave Policy" in pto
+    assert "combined" in sick.casefold() and "pto" in sick.casefold()
+    assert "56 hours" not in sick.casefold()
+    assert "no second company accrual bank" in sick.casefold()
     overview = pto.split("## Overview", 1)[1].split("## Accrual", 1)[0].casefold()
-    assert "vacation and personal" in overview
-    assert "short-term illness in a single balance" not in overview
+    assert "short-term illness in a" in overview and "single balance" in overview
+    assert "separate sick and safe leave policy bank" not in overview
 
     assert "PTO Policy" in severance
     assert "Workplace Health and Safety Policy" in injury
@@ -362,15 +364,24 @@ def test_hr_lifecycle_policies_resolve_cross_policy_conflicts():
     assert "later of" in cobra.casefold()
     assert "election notice is delivered" in cobra.casefold()
     assert "distinct from statutory fmla" in medical.casefold()
+    assert "not add a second company bonding-leave" in medical.casefold()
+    assert "company bonding leave and pay" in parental.casefold()
+    assert "not stack additional company bonding" in parental.casefold()
 
     cases = {case["id"]: case for case in load_cases(FULL_DATASET)}
     for case_id in (
+        "full_answerable_39",
         "full_answerable_43",
         "full_answerable_44",
         "full_answerable_45",
+        "full_answerable_46",
         "full_answerable_41",
     ):
         assert case_id in cases
     assert "Paid Time Off (PTO) Policy" in cases["full_answerable_43"]["expected_sources"]
+    assert "combined pto bank" in cases["full_answerable_43"]["expected_behavior"].casefold()
+    assert "56" not in cases["full_answerable_39"]["expected_behavior"]
+    assert "Parental Leave Policy" in cases["full_answerable_46"]["expected_sources"]
+    assert "does not stack" in cases["full_answerable_46"]["expected_behavior"].casefold()
     assert "later of coverage loss" in cases["full_answerable_41"]["expected_behavior"].casefold()
     validate_sources_against_corpus(load_cases(FULL_DATASET))
