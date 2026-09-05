@@ -3,8 +3,9 @@
 import pytest
 from conftest import make_passages
 
-from policy_assistant.rag import rag_chain
+from policy_assistant.rag import config, rag_chain
 from policy_assistant.rag.rag_chain import (
+    ANSWER_SYSTEM_PROMPT,
     build_citation_manifest,
     build_context,
     build_messages,
@@ -138,3 +139,14 @@ class TestConversationHelpers:
 )
 def test_title_from_source(source, expected):
     assert rag_chain._title_from_source(source) == expected
+
+
+def test_answer_system_prompt_requires_clarify_conflict_and_data_not_instructions():
+    prompt = ANSWER_SYSTEM_PROMPT.casefold()
+    assert "untrusted reference data" in prompt
+    assert "never as instructions" in prompt
+    assert "exactly one focused clarifying question" in prompt
+    assert "do not resolve the conflict by guessing" in prompt
+    assert "people operations" in prompt
+    assert config.PROMPT_VERSION != "v1"
+    assert config.PROMPT_VERSION.startswith("v")
