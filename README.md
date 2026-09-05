@@ -487,8 +487,14 @@ locally, plus one variable in `.env`.
 2. In the DuckDNS dashboard, point the subdomain at that address.
 3. Security group inbound rules: 80 and 443 from anywhere, 22 from your own
    address. Leave 3000 and 8000 closed; nothing listens on them.
-4. On the instance, install Docker, clone the repository, and write `.env` as
-   in step 1 with one extra line:
+4. On the instance, install Docker, clone the repository into
+   `/home/ubuntu/CMSC495-CAP`, and write `.env` as in step 1 with one extra
+   line:
+
+   ```bash
+   git clone https://github.com/CMSC495-GROUP3/Sourcebook.git /home/ubuntu/CMSC495-CAP
+   cd /home/ubuntu/CMSC495-CAP
+   ```
 
    ```dotenv
    SITE_ADDRESS=sourcebook.duckdns.org
@@ -504,8 +510,8 @@ locally, plus one variable in `.env`.
    Encrypt HTTP challenge on port 80 on the first request. If the challenge
    fails it retries with backoff, and `docker compose logs caddy` shows why.
 
-6. Turn on automatic deploys. The checkout must live at
-   `/home/ubuntu/CMSC495-CAP`, which is where the unit file points:
+6. Turn on automatic deploys. The checkout must already be at
+   `/home/ubuntu/CMSC495-CAP` (step 4); that is where the unit file points:
 
    ```bash
    sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/

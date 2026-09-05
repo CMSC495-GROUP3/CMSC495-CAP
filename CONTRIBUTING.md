@@ -18,8 +18,8 @@ Prerequisites: Python 3.11+, Node 20+, and `make`. Docker is only needed for the
 full stack.
 
 ```bash
-git clone https://github.com/DanielTsang26/CMSC495-CAP.git
-cd CMSC495-CAP
+git clone https://github.com/CMSC495-GROUP3/Sourcebook.git
+cd Sourcebook
 make setup          # .venv, Python deps, npm install
 make stub           # terminal 1: API on :8000, fake model, in-memory Mongo
 make web            # terminal 2: React on :5173 with hot reload
@@ -176,7 +176,7 @@ root as modules: `python -m policy_assistant.rag.embed_documents`,
 
 1. Branch from `main`: `feat/short-name`, `fix/short-name`, `docs/...`. If you
    do not have write access to the repo, work on a fork; `gh repo fork` sets
-   one up and PRs open against `DanielTsang26/CMSC495-CAP` the same way.
+   one up and PRs open against `CMSC495-GROUP3/Sourcebook` the same way.
 2. Commit in pieces that each make sense alone. Messages follow
    `type: what changed` with the types `feat`, `fix`, `refactor`, `docs`,
    `test`, `chore`, `perf`, `ci`. The body is for *why*, and for anything a
