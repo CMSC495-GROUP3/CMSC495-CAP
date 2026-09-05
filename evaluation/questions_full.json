@@ -370,6 +370,56 @@
     "expected_behavior": "Answer yes; personal phones, tablets, and computers used for Meridian systems are covered."
   },
   {
+    "id": "full_answerable_38",
+    "category": "answerable",
+    "question": "How many weeks of medical and family leave can an eligible Meridian full-time employee request in a rolling 12-month period?",
+    "expected_sources": [
+      "Medical and Family Leave Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer up to 12 weeks and cite the Medical and Family Leave Policy."
+  },
+  {
+    "id": "full_answerable_39",
+    "category": "answerable",
+    "question": "How many hours of paid sick and safe leave can a full-time Meridian employee accrue in a calendar year?",
+    "expected_sources": [
+      "Sick and Safe Leave Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer up to 56 hours and cite the Sick and Safe Leave Policy."
+  },
+  {
+    "id": "full_answerable_40",
+    "category": "answerable",
+    "question": "What should I do first after a workplace injury at Meridian if I need medical attention?",
+    "expected_sources": [
+      "Workplace Injury and Workers' Compensation Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Say get medical attention, then notify manager/People Operations and file an incident report."
+  },
+  {
+    "id": "full_answerable_41",
+    "category": "answerable",
+    "question": "How many days do I generally have to elect Meridian benefits continuation after a qualifying event notice?",
+    "expected_sources": [
+      "Benefits Continuation (COBRA) Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer 60 days and cite the Benefits Continuation (COBRA) Policy."
+  },
+  {
+    "id": "full_answerable_42",
+    "category": "answerable",
+    "question": "What discretionary severance guideline does Meridian describe for eligible involuntary separations?",
+    "expected_sources": [
+      "Separation and Severance Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Describe one week of base pay per completed year capped at 12 weeks, noting only a signed agreement controls."
+  },
+  {
     "id": "full_unanswerable_01",
     "category": "unanswerable",
     "question": "Does Meridian reimburse employee pet insurance?",
