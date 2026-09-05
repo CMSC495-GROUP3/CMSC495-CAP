@@ -84,6 +84,10 @@ jobs:
     name: Leaked secrets
     runs-on: ubuntu-latest
     env:
+      # Dependabot does not track this pin. To bump: pick a release at
+      # https://github.com/gitleaks/gitleaks/releases, copy the linux_x64
+      # line from that release's gitleaks_<version>_checksums.txt, and
+      # update both values together.
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_LINUX_X64_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
