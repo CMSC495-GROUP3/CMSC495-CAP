@@ -84,7 +84,6 @@ def test_expected_sources_must_exist_in_sample_corpus():
         validate_sources_against_corpus(cases)
 
 
-
 def test_corpus_aligned_answerable_labels():
     """Tuition and dress-code questions stay answerable while those policies exist."""
     cases = {case["id"]: case for case in load_cases(SMOKE_DATASET)}
