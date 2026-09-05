@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from pymongo import DESCENDING
 
-from policy_assistant.api.db import conversations_col
+from policy_assistant.api.db import conversations_col, projects_col
 from policy_assistant.api.routes.deps import require_auth
 
 router = APIRouter()
@@ -30,6 +30,11 @@ def _serialize(doc: dict) -> dict:
     return doc
 
 
+def _require_project(project_id: str | None) -> None:
+    if project_id is not None and projects_col.find_one({"project_id": project_id}) is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+
 @router.get("/conversations", dependencies=[Depends(require_auth)])
 def list_conversations():
     docs = conversations_col.find(
@@ -41,6 +46,7 @@ def list_conversations():
 
 @router.post("/conversations", dependencies=[Depends(require_auth)])
 def create_conversation(body: CreateConversationRequest):
+    _require_project(body.project_id)
     now = datetime.now(UTC)
     doc = {
         "session_id": str(uuid.uuid4()),
@@ -72,6 +78,7 @@ def update_conversation(session_id: str, body: UpdateConversationRequest):
     # project_id in model_fields_set means the client explicitly sent it.
     # body.project_id == None means "unassign" (remove from project).
     if "project_id" in body.model_fields_set:
+        _require_project(body.project_id)
         updates["project_id"] = body.project_id
 
     result = conversations_col.update_one({"session_id": session_id}, {"$set": updates})

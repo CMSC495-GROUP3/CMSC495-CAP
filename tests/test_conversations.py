@@ -1,5 +1,7 @@
 """Conversation and project CRUD."""
 
+from policy_assistant.api.db import conversations_col
+
 
 def test_conversation_lifecycle(client, auth):
     created = client.post("/api/conversations", json={"title": "PTO"}, headers=auth).json()
@@ -51,3 +53,52 @@ def test_projects_group_conversations_and_release_them_on_delete(client, auth):
     assert client.get(f"/api/conversations/{sid}", headers=auth).json()["project_id"] is None
     deleted_again = client.delete(f"/api/projects/{pid}", headers=auth)
     assert deleted_again.status_code == 404
+
+
+def test_unknown_project_assignments_are_rejected_without_mutation(client, auth):
+    create = client.post(
+        "/api/conversations",
+        json={"title": "orphan", "project_id": "missing"},
+        headers=auth,
+    )
+    assert create.status_code == 404
+    assert create.json() == {"detail": "Project not found."}
+    assert client.get("/api/conversations", headers=auth).json() == []
+
+    project = client.post("/api/projects", json={"name": "Real"}, headers=auth).json()
+    conversation = client.post(
+        "/api/conversations",
+        json={"title": "original", "project_id": project["project_id"]},
+        headers=auth,
+    ).json()
+
+    update = client.patch(
+        f"/api/conversations/{conversation['session_id']}",
+        json={"title": "changed", "project_id": "missing"},
+        headers=auth,
+    )
+    assert update.status_code == 404
+    assert update.json() == {"detail": "Project not found."}
+
+    unchanged = client.get(f"/api/conversations/{conversation['session_id']}", headers=auth).json()
+    assert unchanged["title"] == "original"
+    assert unchanged["project_id"] == project["project_id"]
+
+
+def test_deleting_unknown_project_does_not_unassign_orphaned_conversation(client, auth):
+    conversations_col.insert_one(
+        {
+            "session_id": "legacy-orphan",
+            "title": "Legacy orphan",
+            "project_id": "missing",
+            "messages": [],
+        }
+    )
+
+    response = client.delete("/api/projects/missing", headers=auth)
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Project not found."}
+    assert (
+        client.get("/api/conversations/legacy-orphan", headers=auth).json()["project_id"]
+        == "missing"
+    )
