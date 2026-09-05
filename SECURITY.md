@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Use GitHub's private reporting form:
-https://github.com/DanielTsang26/CMSC495-CAP/security/advisories/new
+https://github.com/CMSC495-GROUP3/Sourcebook/security/advisories/new
 
 Do not open a public issue. Say what you found, how to reproduce it, and what
 you think the impact is. A maintainer will reply on the advisory thread.

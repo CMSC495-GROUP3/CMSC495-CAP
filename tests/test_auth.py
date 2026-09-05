@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+from datetime import timedelta
 
 import bcrypt
 import pytest
@@ -98,8 +100,107 @@ def test_login_records_which_password_was_used(client, monkeypatch, caplog, pass
     )
     assert claims["sub"] == "user"
     assert claims["cred"] == variable
+    assert claims["fingerprint"] == auth_routes.credential_fingerprint(os.environ[variable])
+    assert len(claims["fingerprint"]) == auth_routes.FINGERPRINT_HEX_LEN
     assert f"Login with {variable}" in caplog.text
     assert password not in caplog.text
+    assert os.environ[variable] not in response.text
+    assert os.environ[variable] not in caplog.text
+    assert os.environ[variable] not in claims["fingerprint"]
+
+
+def test_rotated_second_hash_rejects_its_tokens(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    token = client.post("/api/auth/login", json={"password": SECOND_PASSWORD}).json()[
+        "access_token"
+    ]
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 200
+    )
+
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 401
+    )
+
+
+def test_rotating_second_hash_does_not_affect_primary_tokens(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    primary = client.post("/api/auth/login", json={"password": TEST_PASSWORD}).json()[
+        "access_token"
+    ]
+    secondary = client.post("/api/auth/login", json={"password": SECOND_PASSWORD}).json()[
+        "access_token"
+    ]
+
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {primary}"}).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            "/api/conversations", headers={"Authorization": f"Bearer {secondary}"}
+        ).status_code
+        == 401
+    )
+
+
+def test_legacy_token_without_fingerprint_is_rejected(client):
+    token = auth_routes.create_access_token(
+        {"sub": "user", "cred": "APP_PASSWORD_HASH"},
+        timedelta(hours=1),
+    )
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 401
+    )
+
+
+def test_malformed_fingerprint_length_is_rejected(client):
+    token = auth_routes.create_access_token(
+        {
+            "sub": "user",
+            "cred": "APP_PASSWORD_HASH",
+            "fingerprint": "short",
+        },
+        timedelta(hours=1),
+    )
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 401
+    )
+
+
+def test_token_cred_outside_allowlist_is_rejected(client, monkeypatch):
+    # A forged cred must not become an os.getenv selector for an arbitrary name.
+    monkeypatch.setenv("PATH", os.environ.get("PATH", "/usr/bin"))
+    token = auth_routes.create_access_token(
+        {
+            "sub": "user",
+            "cred": "PATH",
+            "fingerprint": auth_routes.credential_fingerprint(os.environ["PATH"]),
+        },
+        timedelta(hours=1),
+    )
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 401
+    )
+
+
+def test_unset_second_hash_rejects_its_tokens(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD_HASH_2", _second_hash())
+    token = client.post("/api/auth/login", json={"password": SECOND_PASSWORD}).json()[
+        "access_token"
+    ]
+    monkeypatch.delenv("APP_PASSWORD_HASH_2", raising=False)
+    assert (
+        client.get("/api/conversations", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 401
+    )
 
 
 # validate_password_hashes is what main.py runs at import, so these pin the

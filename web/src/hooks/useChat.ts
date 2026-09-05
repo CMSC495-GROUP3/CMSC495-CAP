@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import client, { TOKEN_KEY } from '../api/client'
+import client, { TOKEN_KEY, signOut } from '../api/client'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -116,6 +116,12 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
       })
 
       if (!response.ok || !response.body) {
+        // Stream uses raw fetch, so it bypasses the axios 401 interceptor.
+        // An expired token must sign the user out, not look like a chat error.
+        if (response.status === 401) {
+          signOut()
+          return
+        }
         throw new Error(`HTTP ${response.status}`)
       }
 

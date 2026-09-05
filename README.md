@@ -252,12 +252,24 @@ history handling, same reason: a client that could supply its own text could
 escalate an exchange that never happened. Escalating the same message twice
 returns the first record instead of filing a second.
 
-Records land in the `escalations` collection with status `open`. If
-`ESCALATION_WEBHOOK_URL` is set, each one is also posted there in a background
-task after the response is sent. The payload has a top-level `text` field, so a
-Slack or Teams incoming webhook renders it with no adapter. Delivery is best
-effort and logged on failure. The record is already stored, and a webhook
-outage must not turn a successful hand-off into an error.
+Records land in the `escalations` collection with status `open` and delivery
+status `pending`. If `ESCALATION_WEBHOOK_URL` is set, each one is also posted
+there in a background task after the response is sent. The payload has a
+top-level `text` field, so a Slack or Teams incoming webhook renders it with no
+adapter. Each attempt updates non-secret delivery fields on the record
+(`pending` / `delivered` / `failed`, attempt count, last-attempt time). Delivery
+is best effort and logged on failure; the webhook URL is never stored, logged,
+or returned. The record is already stored, and a webhook outage must not turn a
+successful hand-off into an error. Failed deliveries can be retried with
+`POST /api/escalations/{id}/retry-delivery` up to
+`ESCALATION_WEBHOOK_MAX_ATTEMPTS`, with an atomic claim so concurrent retries
+cannot double-send. Claims older than `ESCALATION_WEBHOOK_LEASE_SECONDS`
+(default 30) can be recovered after a worker interruption. The lease must be
+greater than `ESCALATION_WEBHOOK_TIMEOUT_SECONDS`; invalid configuration fails
+at startup. Records created before delivery tracking can be claimed as legacy work. Delivery is
+at-least-once: a receiver that accepts a request immediately before the worker
+dies may see the same escalation again, so consumers should deduplicate by
+`escalation_id`.
 
 Whoever handles the queue lists it with `GET /api/escalations?status=open` and
 closes an item with `PATCH /api/escalations/{id}` and a resolution note. There
@@ -428,9 +440,11 @@ Three things to know before handing one out. Both passwords open the same
 door, so the deployment is exactly as strong as the weaker of the two; do not
 make the second one short because it is temporary. Each successful login logs
 which variable matched and puts that name in the token's `cred` claim, which
-is how to tell a reviewer's session from the team's afterwards. Unsetting the
-variable stops new logins with that password, but tokens already issued live
-for 24 hours, so unset it a day before it has to be dead.
+is how to tell a reviewer's session from the team's afterwards. Changing or
+unsetting a hash signs out everyone who logged in with it: each session is
+bound to a fingerprint of that hash, so the next request with the old token
+fails. Rotating `JWT_SECRET_KEY` is no longer needed just to revoke one
+password's sessions; the other password's sessions keep working.
 
 ### 2. Load the corpus
 
@@ -487,8 +501,14 @@ locally, plus one variable in `.env`.
 2. In the DuckDNS dashboard, point the subdomain at that address.
 3. Security group inbound rules: 80 and 443 from anywhere, 22 from your own
    address. Leave 3000 and 8000 closed; nothing listens on them.
-4. On the instance, install Docker, clone the repository, and write `.env` as
-   in step 1 with one extra line:
+4. On the instance, install Docker, clone the repository into
+   `/home/ubuntu/CMSC495-CAP`, and write `.env` as in step 1 with one extra
+   line:
+
+   ```bash
+   git clone https://github.com/CMSC495-GROUP3/Sourcebook.git /home/ubuntu/CMSC495-CAP
+   cd /home/ubuntu/CMSC495-CAP
+   ```
 
    ```dotenv
    SITE_ADDRESS=sourcebook.duckdns.org
@@ -504,8 +524,8 @@ locally, plus one variable in `.env`.
    Encrypt HTTP challenge on port 80 on the first request. If the challenge
    fails it retries with backoff, and `docker compose logs caddy` shows why.
 
-6. Turn on automatic deploys. The checkout must live at
-   `/home/ubuntu/CMSC495-CAP`, which is where the unit file points:
+6. Turn on automatic deploys. The checkout must already be at
+   `/home/ubuntu/CMSC495-CAP` (step 4); that is where the unit file points:
 
    ```bash
    sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
@@ -521,7 +541,12 @@ locally, plus one variable in `.env`.
 
 From then on the instance polls upstream `main` every two minutes. When the
 branch moves, `scripts/auto_deploy.sh` fast-forwards the checkout and acts on
-what changed:
+what changed since the last *successful* deploy, recorded in the local ref
+`refs/deployed/main` (not in `HEAD`). The script advances that ref only after
+`/api/health` passes, or after a docs-only fast-forward that needs no rebuild.
+A failed `docker compose build` or `up` therefore leaves the ref behind, and
+the next tick retries the same tip instead of treating the fast-forwarded
+`HEAD` as already deployed.
 
 | Changed path                                       | What happens                                                                 |
 | -------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -529,17 +554,60 @@ what changed:
 | `web/`                                             | rebuild and recreate `web`                                                   |
 | `docker-compose.yml`                               | rebuild both images, `up` recreates whatever the file changed                |
 | `Caddyfile`                                        | `caddy reload` inside the running container; certificate and listeners stay  |
-| anything else                                      | nothing                                                                      |
+| anything else                                      | advance `refs/deployed/main` only; no container rebuild                      |
 
 After a deploy it requests `/api/health` through the `web` container, so the
 probe covers Nginx, Uvicorn, and the hop between them, and it keeps the old
 images until that probe passes. On a tick with nothing to deploy it still runs
 the probe, so a broken stack keeps the service red on every tick rather than
-going green once `main` stops moving. Caddy keeps running through an `api` or
-`web` deploy, so the certificate and in-flight requests survive.
-`sudo journalctl -u auto-deploy.service` shows what the last run did. Run the
-script by hand as `ubuntu`, not under `sudo`; it refuses to run on a checkout
-that is not on `main` or that has local edits.
+going green once `main` stops moving. After five consecutive failures on the
+same commit (`AUTO_DEPLOY_MAX_FAILURES`, or `0` to keep retrying), the tick
+stays red and logs `skipping rebuild` without burning another build loop.
+Caddy keeps running through an `api` or `web` deploy, so the certificate and
+in-flight requests survive. `sudo journalctl -u auto-deploy.service` shows what
+the last run did. Run the script by hand as `ubuntu`, not under `sudo`; it
+refuses to run on a checkout that is not on `main` or that has local edits.
+
+To force a full redeploy of both images on the next tick (for example after
+deleting a bad image by hand), drop the success marker:
+
+```bash
+git update-ref -d refs/deployed/main
+```
+
+#### Upgrading an existing install
+
+Hosts that already run the older auto-deploy timer need a one-time handoff
+before the first tick that executes the retry-aware script. Without a seeded
+`refs/deployed/main`, that tick diffs against the empty tree, rebuilds both
+images with `--pull`, and recreates Caddy—risky on a near-full root disk.
+
+1. Confirm the checkout is clean under the new rule (untracked files count):
+
+   ```bash
+   cd /home/ubuntu/CMSC495-CAP && git status --porcelain --untracked-files=all
+   ```
+
+   Must print nothing. If it lists files, delete them or add them to
+   `.gitignore` in a separate PR first.
+
+2. Seed the deployed ref to the commit whose images are currently running
+   *before* the new retry logic is active on the host (while the old script is
+   still what the timer runs, immediately before merging the retry change):
+
+   ```bash
+   git update-ref refs/deployed/main "$(git rev-parse HEAD)"
+   ```
+
+3. Verify the ref before the first new deploy tick:
+
+   ```bash
+   git rev-parse refs/deployed/main
+   ```
+
+   It must match the running checkout (`git rev-parse HEAD`). After the upgrade
+   lands, watch two ticks of `sudo journalctl -u auto-deploy.service -f`; a
+   later idle tick should log `nothing to rebuild` and exit 0.
 
 The script only reacts to git. After editing `.env` on the instance, recreate
 the affected service yourself with `docker compose up -d <service>`.
@@ -687,7 +755,7 @@ policy_assistant/   the Python application, one package, absolute imports only
       conversations.py  saved conversations and their citations
       projects.py       folders that group conversations
       documents.py      browse and search the indexed corpus
-      escalations.py    hand a question to a person; open queue; resolve
+      escalations.py    hand a question to a person; open queue; resolve; retry delivery
   rag/              the pipeline, imported by api/ and run offline for ingestion
     config.py         every tuning knob, env-overridable; defaults live here
     llm.py            LLMProvider interface, the only vendor-aware module

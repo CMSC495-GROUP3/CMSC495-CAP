@@ -136,6 +136,57 @@ def test_nginx_uses_real_ip_then_replaces_xff_with_remote_addr():
     )
 
 
+SECURITY_HEADER_LINES = (
+    'add_header X-Frame-Options "SAMEORIGIN" always;',
+    'add_header X-Content-Type-Options "nosniff" always;',
+    'add_header X-XSS-Protection "1; mode=block" always;',
+    'add_header Referrer-Policy "strict-origin-when-cross-origin" always;',
+)
+
+
+def _nginx_location_block(conf: str, location: str) -> str:
+    """Return the body of `location <location> { ... }` from nginx.conf."""
+    pattern = rf"location\s+{re.escape(location)}\s*\{{"
+    match = re.search(pattern, conf)
+    assert match is not None, f"missing location {location}"
+    start = match.end()
+    depth = 1
+    index = start
+    while index < len(conf) and depth:
+        if conf[index] == "{":
+            depth += 1
+        elif conf[index] == "}":
+            depth -= 1
+        index += 1
+    assert depth == 0, f"unbalanced braces for location {location}"
+    return conf[start : index - 1]
+
+
+def test_nginx_cache_control_and_asset_404_keep_security_headers():
+    """index.html is never cached; hashed assets are immutable; missing assets 404."""
+    conf = (REPO_ROOT / "web" / "nginx.conf").read_text(encoding="utf-8")
+
+    # Server-level security headers remain for locations that do not redeclare
+    # add_header (SPA fallback and /api/).
+    for line in SECURITY_HEADER_LINES:
+        assert line in conf
+
+    index_block = _nginx_location_block(conf, "= /index.html")
+    assert 'add_header Cache-Control "no-cache" always;' in index_block
+    for line in SECURITY_HEADER_LINES:
+        assert line in index_block
+
+    assets_block = _nginx_location_block(conf, "/assets/")
+    assert 'add_header Cache-Control "public, max-age=31536000, immutable" always;' in assets_block
+    assert "try_files $uri =404;" in assets_block
+    for line in SECURITY_HEADER_LINES:
+        assert line in assets_block
+
+    spa_block = _nginx_location_block(conf, "/")
+    assert "try_files $uri $uri/ /index.html;" in spa_block
+    assert "gzip on;" in conf
+
+
 def test_caddyfile_does_not_trust_upstream_proxies():
     caddy = (REPO_ROOT / "Caddyfile").read_text(encoding="utf-8")
     assert "reverse_proxy web:80" in caddy
