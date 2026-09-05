@@ -541,13 +541,35 @@ locally, plus one variable in `.env`.
 
    ```bash
    sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
-   sudo systemctl enable --now auto-deploy.timer
+   sudo cp scripts/systemd/docker-prune.* /etc/systemd/system/
+   sudo systemctl enable --now auto-deploy.timer docker-prune.timer
    ```
 
-   The timer fires as soon as it is enabled. A rebuild of both images needs a
-   few hundred megabytes free, so on a small root disk run
-   `docker builder prune -f` first; `df -h /` and `docker system df` show
-   where the space went.
+   The deploy timer fires as soon as it is enabled. `docker-prune.timer`
+   runs a weekly `docker builder prune -f --keep-storage 300M` so the build
+   cache cannot fill the root volume between rebuilds. `auto_deploy.sh`
+   also prunes when root free space drops under 1 GiB before a rebuild.
+   Until the volume is grown (see [Root disk](#root-disk) below), run
+   `docker builder prune -f` by hand before a deploy that rebuilds both
+   images if `df -h /` shows under about 1 GB free.
+
+### Root disk
+
+The pilot instance ships with a small root volume (~7 GB). Docker images are
+about 500 MB; one full rebuild leaves ~1 GB of build cache, which is enough
+to make the next rebuild fail for lack of space. Grow the EBS volume to
+16 GB (or more) in the AWS console, then on the instance:
+
+```bash
+lsblk
+sudo growpart /dev/nvme0n1 1
+sudo resize2fs /dev/nvme0n1p1
+df -h /
+```
+
+Device names come from `lsblk`; older instances may show `/dev/xvda` instead
+of `nvme0n1`. The resize is online. Keep `docker-prune.timer` enabled so the
+cache still cannot creep to fill whatever headroom you add.
 
 ### Automatic deploys
 
