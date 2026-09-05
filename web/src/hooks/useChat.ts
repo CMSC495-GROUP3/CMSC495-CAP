@@ -39,13 +39,23 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
     if (!sessionId) setMessages([])
   }
 
+  // Both requests below can outlive the conversation that started them: the
+  // user clicks a second chat before the first has loaded, or "New chat"
+  // before follow-ups return. A late response used to write into whichever
+  // list was on screen, at an index from the old conversation. Past the end
+  // of a shorter list that left a hole, the next `[...prev]` turned the hole
+  // into an undefined message, and <Message> crashed on `message.role`, which
+  // unmounted the whole app (issue #82). The cleanup flag drops any response
+  // that belongs to a conversation the user has already left.
   useEffect(() => {
     if (!sessionId) return
     if (skipNextFetch.current) {
       skipNextFetch.current = false
       return
     }
+    let cancelled = false
     client.get(`/api/conversations/${sessionId}`).then((res) => {
+      if (cancelled) return
       const raw: {
         role: string
         content: string
@@ -73,7 +83,10 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
             question: mapped[lastUserIdx].content,
             answer: mapped[lastAssistantIdx].content,
           }).then((r) => {
+            if (cancelled) return
             setMessages((prev) => {
+              // Never write past the end of the list or onto a user turn.
+              if (prev[lastAssistantIdx]?.role !== 'assistant') return prev
               const updated = [...prev]
               updated[lastAssistantIdx] = { ...updated[lastAssistantIdx], follow_ups: r.data.follow_ups }
               return updated
@@ -82,6 +95,9 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
         }
       }
     })
+    return () => {
+      cancelled = true
+    }
   }, [sessionId])
 
   async function sendMessage(question: string) {
@@ -133,6 +149,15 @@ export function useChat({ sessionId, onSessionCreated }: UseChatOptions) {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        // The user opened another conversation or "New chat" mid-stream.
+        // Stop rendering so chunks do not land in the wrong list (or on an
+        // empty one), but keep reading: closing the connection would make the
+        // server persist a fragment, and draining lets it save the whole
+        // answer for when the user comes back.
+        if (activeSessionId.current !== sid) {
+          while (!(await reader.read()).done) { /* discard */ }
+          return
+        }
 
         // Decode incrementally; buffer handles chunks that split across SSE boundaries
         buffer += decoder.decode(value, { stream: true })
