@@ -1,8 +1,11 @@
 """Conversation and project CRUD."""
 
+import threading
+
 import pytest
 
 from policy_assistant.api.db import conversations_col, projects_col
+from policy_assistant.api.routes import conversations as conversations_routes
 from policy_assistant.api.routes import projects as projects_routes
 
 
@@ -180,3 +183,58 @@ def test_conversation_titles_and_project_names_are_normalized_and_bounded(client
     )
     assert project.status_code == 200
     assert project.json()["name"] == "Q3 Planning"
+
+
+def test_assignment_can_interleave_with_project_delete(client, auth, monkeypatch):
+    """Reproduce validate+create TOCTOU: insert can land after the project is deleted.
+
+    `_require_project` and `insert_one` are separate steps with no shared Mongo
+    session/transaction (fakemongo and `rag/mongo.py` expose none). Freezing the
+    create between those steps lets a concurrent delete finish first, producing
+    an assignment to a missing project_id. This documents the pilot limitation;
+    it does not claim atomic referential integrity.
+    """
+    project = client.post("/api/projects", json={"name": "Race"}, headers=auth).json()
+    pid = project["project_id"]
+    gate = threading.Event()
+    release = threading.Event()
+    original_insert = conversations_routes.conversations_col.insert_one
+
+    def insert_after_delete(doc):
+        gate.set()
+        assert release.wait(timeout=5), "timed out waiting for concurrent delete"
+        return original_insert(doc)
+
+    monkeypatch.setattr(conversations_routes.conversations_col, "insert_one", insert_after_delete)
+
+    results: list = []
+
+    def create_conversation():
+        response = client.post(
+            "/api/conversations",
+            json={"title": "late assign", "project_id": pid},
+            headers=auth,
+        )
+        results.append(response)
+
+    creator = threading.Thread(target=create_conversation)
+    creator.start()
+    assert gate.wait(timeout=5), "create never reached insert gate"
+
+    deleted = client.delete(f"/api/projects/{pid}", headers=auth)
+    assert deleted.status_code == 200
+    assert projects_col.find_one({"project_id": pid}) is None
+
+    release.set()
+    creator.join(timeout=5)
+    assert not creator.is_alive()
+
+    created = results[0]
+    assert created.status_code == 200, created.text
+    assert created.json()["project_id"] == pid
+    assert (
+        client.get(f"/api/conversations/{created.json()['session_id']}", headers=auth).json()[
+            "project_id"
+        ]
+        == pid
+    )

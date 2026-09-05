@@ -65,6 +65,14 @@ def _serialize(doc: dict) -> dict:
 
 
 def _require_project(project_id: str | None) -> None:
+    """Reject unknown project ids before create/reassign writes.
+
+    This is a point-in-time existence check, not a transactional lock. Between
+    this find_one and the later insert_one/update_one, a concurrent delete can
+    remove the project (validate+create / validate+reassign TOCTOU). Stub mode
+    has no Mongo sessions/transactions; the pilot accepts that race rather than
+    claiming atomic referential integrity. See projects.delete_project.
+    """
     if project_id is not None and projects_col.find_one({"project_id": project_id}) is None:
         raise HTTPException(status_code=404, detail="Project not found.")
 

@@ -56,10 +56,21 @@ def delete_project(project_id: str):
     """Delete a project after releasing its conversations.
 
     Order is confirm-exists → unassign conversations → delete project so a
-    missing id is a side-effect-free 404. A concurrent delete can still race:
-    another request may remove the project between find_one and delete_one, in
-    which case this caller returns 404 after conversations were already
-    released (idempotent with respect to the assignment).
+    missing id is a side-effect-free 404 for unknown projects.
+
+    Pilot limitation (no multi-document transaction): these three steps are not
+    atomic. Known TOCTOU windows under concurrent writers:
+
+    - delete+unassign vs assign: another request may pass `_require_project` and
+      insert/update a conversation onto this project_id after find_one succeeds
+      and before (or after) update_many, leaving an assignment to a project that
+      is about to be (or already was) deleted.
+    - concurrent deletes: a second deleter may return 404 after conversations
+      were already released (idempotent for assignments).
+
+    Stub/fakemongo and the shared `MongoClient` in `rag/mongo.py` do not expose
+    Atlas transactions; this pilot does not claim strict referential integrity
+    under concurrency. See the follow-up issue linked from PR #133.
     """
     if projects_col.find_one({"project_id": project_id}) is None:
         raise HTTPException(status_code=404, detail="Project not found.")
