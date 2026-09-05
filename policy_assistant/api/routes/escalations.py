@@ -138,7 +138,6 @@ def _claim_delivery(escalation_id: str) -> dict | None:
                     "delivery_claimed_at": now,
                     "updated_at": now,
                 },
-                "$setOnInsert": {"delivery_attempts": 0},
             },
             return_document=ReturnDocument.AFTER,
         )
