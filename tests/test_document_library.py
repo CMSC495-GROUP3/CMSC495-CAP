@@ -95,5 +95,15 @@ def test_reingestion_rebuilds_the_library_once(client, auth):
 
 
 def test_empty_corpus(client, auth):
+    _seed_passages(("documents/pto.md", "PTO", "Leave", 1))
+    assert client.get("/api/documents", headers=auth).json()["total"] == 1
+
+    FAKE_DB["passages"].delete_many({})
+    before = get_corpus_version()
+    result = client.post("/api/documents/reindex", headers=auth).json()
+
+    assert result["ok"] is True
+    assert result["documents"] == 0
+    assert result["corpus_version"] != before
     assert client.get("/api/documents", headers=auth).json() == {"items": [], "total": 0}
-    assert client.post("/api/documents/reindex", headers=auth).json()["documents"] == 0
+    assert client.get("/api/documents/categories", headers=auth).json() == []
