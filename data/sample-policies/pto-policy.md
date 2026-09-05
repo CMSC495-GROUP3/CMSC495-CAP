@@ -8,6 +8,9 @@ Effective: 2026-01-01
 Meridian Systems provides paid time off to all regular full-time and part-time
 employees. PTO covers vacation, personal days, and short-term illness in a
 single balance. You do not need to categorize a request as sick versus vacation.
+Safe-leave process and jurisdiction questions are covered in the Sick and Safe
+Leave Policy; they still draw from this combined PTO bank unless People
+Operations directs otherwise for a local ordinance.
 
 ## Accrual
 
@@ -43,6 +46,9 @@ absences. Your manager will approve or decline within 3 business days.
 For unplanned illness, notify your manager as early as possible on the day of
 the absence, by whatever channel your team normally uses. Retroactive PTO
 requests for sick days should be entered within 3 business days of returning.
+Follow the Sick and Safe Leave Policy for notice and documentation steps when
+the absence is illness-related or safe leave; the time still comes from this
+combined PTO balance.
 
 Requests are generally approved unless coverage is a genuine problem. If a
 request is declined, your manager must offer alternative dates.
@@ -51,8 +57,12 @@ request is declined, your manager must offer alternative dates.
 
 Any absence longer than five consecutive business days requires approval from
 both your manager and People Operations. If the absence is medical, it may be
-covered under short-term disability or FMLA rather than PTO — contact People
-Operations before your leave begins so it is classified correctly.
+covered under short-term disability, company medical and family leave, or
+statutory FMLA rather than PTO — contact People Operations before your leave
+begins so it is classified correctly. Company medical leave and FMLA are
+distinct; see the Medical and Family Leave Policy. Bonding leave and pay for
+new parents are governed by the Parental Leave Policy, not by stacking
+additional company medical and family leave weeks.
 
 ## Holidays
 

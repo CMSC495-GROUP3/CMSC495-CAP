@@ -370,6 +370,100 @@
     "expected_behavior": "Answer yes; personal phones, tablets, and computers used for Meridian systems are covered."
   },
   {
+    "id": "full_answerable_38",
+    "category": "answerable",
+    "question": "How many weeks of medical and family leave can an eligible Meridian full-time employee request in a rolling 12-month period?",
+    "expected_sources": [
+      "Medical and Family Leave Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer up to 12 weeks and cite the Medical and Family Leave Policy."
+  },
+  {
+    "id": "full_answerable_39",
+    "category": "answerable",
+    "question": "Does Meridian create a separate sick and safe leave bank, or do those absences use the PTO balance?",
+    "expected_sources": [
+      "Sick and Safe Leave Policy",
+      "Paid Time Off (PTO) Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer that sick and safe leave use the combined PTO bank; the Sick and Safe Leave Policy is process and jurisdiction guidance, not a second accrual bank."
+  },
+  {
+    "id": "full_answerable_40",
+    "category": "answerable",
+    "question": "What should I do first after a workplace injury at Meridian if I need medical attention?",
+    "expected_sources": [
+      "Workplace Injury and Workers' Compensation Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Say get medical attention first, follow the Workplace Health and Safety Policy incident workflow, then notify manager/People Operations and file the injury report."
+  },
+  {
+    "id": "full_answerable_41",
+    "category": "answerable",
+    "question": "How many days do I generally have to elect Meridian benefits continuation after coverage ends?",
+    "expected_sources": [
+      "Benefits Continuation (COBRA) Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer 60 days from the later of coverage loss or election notice delivery; cite the Benefits Continuation (COBRA) Policy."
+  },
+  {
+    "id": "full_answerable_42",
+    "category": "answerable",
+    "question": "What discretionary severance guideline does Meridian describe for eligible involuntary separations?",
+    "expected_sources": [
+      "Separation and Severance Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Describe one week of base pay per completed year capped at 12 weeks, noting only a signed agreement controls and PTO payout defers to the PTO Policy."
+  },
+  {
+    "id": "full_answerable_43",
+    "category": "answerable",
+    "question": "Is Meridian sick and safe leave drawn from the same balance as PTO?",
+    "expected_sources": [
+      "Sick and Safe Leave Policy",
+      "Paid Time Off (PTO) Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer yes; Meridian uses one combined PTO bank for vacation, personal days, and short-term illness/safe leave, with jurisdiction questions handled by People Operations."
+  },
+  {
+    "id": "full_answerable_44",
+    "category": "answerable",
+    "question": "Does a Meridian severance offer replace the PTO payout rules?",
+    "expected_sources": [
+      "Separation and Severance Policy",
+      "Paid Time Off (PTO) Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer that unused PTO payout follows the PTO Policy unless a signed severance agreement expressly states a different PTO term."
+  },
+  {
+    "id": "full_answerable_45",
+    "category": "answerable",
+    "question": "Is Meridian company medical and family leave the same thing as FMLA?",
+    "expected_sources": [
+      "Medical and Family Leave Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer no; company medical and family leave is distinct from statutory FMLA, which People Operations evaluates separately."
+  },
+  {
+    "id": "full_answerable_46",
+    "category": "answerable",
+    "question": "If I take Meridian parental leave to bond with a newborn, does company medical and family leave add more bonding weeks on top?",
+    "expected_sources": [
+      "Parental Leave Policy",
+      "Medical and Family Leave Policy"
+    ],
+    "expected_outcome": "answer",
+    "expected_behavior": "Answer no; Parental Leave controls Meridian bonding leave and pay, Medical and Family Leave does not stack additional company bonding weeks, and FMLA or state leave may run concurrently only when People Operations says so."
+  },
+  {
     "id": "full_unanswerable_01",
     "category": "unanswerable",
     "question": "Does Meridian reimburse employee pet insurance?",
