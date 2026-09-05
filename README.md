@@ -334,6 +334,12 @@ consumes roughly its generation duration in thread-time. Throughput scales
 almost linearly at about 0.31 requests per second per thread, at about 105 KB
 of resident memory per thread.
 
+Interactive chat is also capped by `CHAT_RATE_LIMIT` (default 30/minute per
+remote address per API worker). That limiter is the binding ceiling for shared
+NAT offices; the table above is what the thread pool can sustain before the
+per-address cap. The synthetic load-test stub disables the limiter so
+`make loadtest` still measures pool capacity.
+
 So one worker clears the target with a configuration change rather than an
 architecture change. That is why the async rewrite originally planned has been
 deferred. It is not needed to meet the requirement, and it would introduce

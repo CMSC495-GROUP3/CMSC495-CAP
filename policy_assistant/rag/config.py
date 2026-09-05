@@ -92,9 +92,13 @@ THREADPOOL_TOKENS = int(os.getenv("THREADPOOL_TOKENS", "100"))
 LOGIN_THREADPOOL_TOKENS = int(os.getenv("LOGIN_THREADPOOL_TOKENS", "10"))
 
 # ── HTTP rate limits (slowapi) ────────────────────────────────────────────────
-# Per remote address. Shared-office NAT means one address is the whole office,
-# so keep these well above one person's pace. Login and escalations keep their
-# own hard-coded limits on the route decorators.
+# Per remote address per API worker: slowapi's default storage is in-process, so
+# under `uvicorn --workers N` each worker keeps its own bucket and the effective
+# ceiling is N times this value. Shared-office NAT means one address is the
+# whole office, so keep these well above one person's pace. The per-address
+# chat cap is the binding throughput ceiling for interactive use; the README's
+# THREADPOOL_TOKENS numbers describe capacity before this limiter. Login and
+# escalations keep their own hard-coded limits on the route decorators.
 CHAT_RATE_LIMIT = os.getenv("CHAT_RATE_LIMIT", "30/minute")
 REINDEX_RATE_LIMIT = os.getenv("REINDEX_RATE_LIMIT", "2/minute")
 

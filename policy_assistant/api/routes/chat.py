@@ -299,8 +299,13 @@ def _finalize(
 
     # Hang-up after `done` can skip the follow-ups yield; finish them here so
     # reopening the conversation still has suggestions without a free-text route.
-    if state["complete"] and not state["refused"] and not state["follow_ups"]:
+    # None means not attempted yet; [] means already attempted (including provider
+    # failure). Do not retry [] here — that doubles utility spend when the
+    # provider is already struggling.
+    if state["complete"] and not state["refused"] and state["follow_ups"] is None:
         state["follow_ups"] = generate_follow_ups(body.question, state["answer"])
+
+    follow_ups = list(state["follow_ups"] or [])
 
     _persist(
         body.session_id,
@@ -309,7 +314,7 @@ def _finalize(
         state["sources"],
         state["confidence"],
         state["refused"],
-        state["follow_ups"],
+        follow_ups,
     )
 
     if state["complete"] and state["cache_hit"] is None and is_cacheable_turn(history):
@@ -320,7 +325,7 @@ def _finalize(
                 "answer": state["answer"],
                 "sources": state["sources"],
                 "confidence": state["confidence"],
-                "follow_ups": state["follow_ups"],
+                "follow_ups": follow_ups,
                 "refused": state["refused"],
             },
         )
@@ -357,7 +362,8 @@ def _stream(body: ChatRequest):
         "sources": [],
         "confidence": None,
         "refused": False,
-        "follow_ups": [],
+        # None = not attempted; [] = attempted but unavailable (incl. provider fail).
+        "follow_ups": None,
         "passages": [],
         "cache_hit": None,
         "condensed": body.question,

@@ -308,8 +308,27 @@ class TestDroppedStream:
         gen.close()
 
         assert _messages(conversation)[-1]["content"] == FAKE_ANSWER
+        assert len(_messages(conversation)[-1]["follow_ups"]) == 3
         assert get_cached_answer("How much PTO?", get_corpus_version())["answer"] == FAKE_ANSWER
         assert FAKE_DB["query_logs"].count_documents({}) == 1
+
+    def test_failed_follow_ups_are_not_retried_in_finalize(
+        self, retrieval, conversation, monkeypatch
+    ):
+        """[] means already attempted; finalize must not call the utility model again."""
+        calls = {"n": 0}
+
+        def empty_follow_ups(question: str, answer: str) -> list[str]:
+            calls["n"] += 1
+            return []
+
+        monkeypatch.setattr(
+            "policy_assistant.api.routes.chat.generate_follow_ups", empty_follow_ups
+        )
+        events = list(_stream(ChatRequest(question="How much PTO?", session_id=conversation)))
+        assert any("follow_ups" in e for e in events)
+        assert calls["n"] == 1
+        assert _messages(conversation)[-1]["follow_ups"] == []
 
     def test_hangup_mid_generation_never_caches_a_partial_answer(self, retrieval, conversation):
         gen = _stream(ChatRequest(question="How much PTO?", session_id=conversation))
