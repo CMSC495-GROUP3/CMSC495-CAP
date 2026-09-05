@@ -1,0 +1,16 @@
+# Bounds Docker build cache so the root volume does not fill up between
+# deploys (issue #79). docker-prune.timer starts it weekly.
+# Install with the other units:
+#   sudo cp scripts/systemd/docker-prune.* /etc/systemd/system/
+#   sudo systemctl enable --now docker-prune.timer
+[Unit]
+Description=Prune Docker build cache, keeping 300 MB
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+# Same user as auto-deploy.service; ubuntu is in the docker group.
+ExecStart=/usr/bin/docker builder prune -f --keep-storage 300M
+TimeoutStartSec=10min

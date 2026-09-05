@@ -1,0 +1,13 @@
+# Enable: sudo systemctl enable --now docker-prune.timer
+# Weekly is enough: a full rebuild regrows the cache to about 1 GB, and
+# auto_deploy.sh also prunes when root free space drops under 1 GiB.
+[Unit]
+Description=Weekly Docker build-cache prune
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

@@ -165,6 +165,15 @@ main() {
   if [ ${#services[@]} -gt 0 ]; then
     up=("${services[@]}")
     [ -n "$recreate_caddy" ] && up+=(caddy)
+    # A full rebuild needs ~1 GiB free; the 6.8 GB root volume sits near
+    # that after one warm cache (issue #79). Prune before build when tight
+    # so the unit does not go red until someone prunes by hand. The weekly
+    # docker-prune.timer keeps the cache from creeping between rebuilds.
+    avail_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+    if [ "${avail_kb:-0}" -lt 1048576 ]; then
+      echo "root has under 1 GiB free (${avail_kb} KiB); pruning Docker build cache"
+      docker builder prune -f --keep-storage 300M
+    fi
     # --pull refreshes base images so a Dependabot Docker bump takes effect.
     # --no-deps keeps `up` from restarting Caddy when only api or web changed.
     if ! docker compose build --pull "${services[@]}"; then
