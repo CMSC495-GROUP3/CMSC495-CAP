@@ -18,7 +18,9 @@ At ~2.5s per generation that is roughly 210 generations in flight at any moment.
 `scripts/loadtest/server.py` runs the real application with three things
 stubbed: the model (`LLM_PROVIDER=fake`, canned answer at a configurable
 per-token delay), MongoDB (in-memory dict, 15 ms simulated latency), and Atlas
-Vector Search (canned passages). `scripts/loadtest/run.py` opens N concurrent
+Vector Search (canned passages). The stub also disables the SlowAPI limiter so
+every virtual user sharing `127.0.0.1` is not capped by `CHAT_RATE_LIMIT`;
+production keeps that limit. `scripts/loadtest/run.py` opens N concurrent
 SSE streams and records time-to-first-token and total duration.
 
 The grounding gate is **not** stubbed. Fake embeddings produce meaningless

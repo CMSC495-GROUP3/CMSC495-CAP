@@ -24,12 +24,13 @@ import logging
 import time
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from policy_assistant.api.analytics import log_query
 from policy_assistant.api.db import conversations_col
+from policy_assistant.api.limiter import limiter
 from policy_assistant.api.routes.deps import require_auth
 from policy_assistant.rag.cache import (
     get_cached_answer,
@@ -37,7 +38,7 @@ from policy_assistant.rag.cache import (
     is_cacheable_turn,
     put_cached_answer,
 )
-from policy_assistant.rag.config import HISTORY_TURNS, REFUSAL_MESSAGE
+from policy_assistant.rag.config import CHAT_RATE_LIMIT, HISTORY_TURNS, REFUSAL_MESSAGE
 from policy_assistant.rag.llm import get_provider
 from policy_assistant.rag.rag_chain import (
     build_messages,
@@ -110,11 +111,13 @@ def _persist(
     sources: list[str],
     confidence: int | None,
     refused: bool,
+    follow_ups: list[str] | None = None,
 ) -> None:
     """Append one exchange to the conversation record.
 
-    Sources and confidence are stored with the assistant message so that
-    reopening a past conversation restores its citations, not just its text.
+    Sources, confidence, and follow-ups are stored with the assistant message
+    so that reopening a past conversation restores citations and suggestions,
+    not just its text.
     """
     if not session_id:
         return
@@ -132,6 +135,7 @@ def _persist(
                             "sources": sources,
                             "confidence": confidence,
                             "refused": refused,
+                            "follow_ups": list(follow_ups or []),
                         },
                     ]
                 }
@@ -194,7 +198,8 @@ def _answer(question: str, history: list[dict]) -> dict:
 
 
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_auth)])
-def chat(body: ChatRequest):
+@limiter.limit(CHAT_RATE_LIMIT)
+def chat(request: Request, body: ChatRequest):
     """Non-streaming variant. Kept for testing and as a fallback; the UI uses
     the streaming route."""
     history = load_history(body.session_id)
@@ -219,6 +224,7 @@ def chat(body: ChatRequest):
         result["sources"],
         result["confidence"],
         result["refused"],
+        result["follow_ups"],
     )
 
     log_query(
@@ -291,6 +297,16 @@ def _finalize(
     if not state["answer"]:
         return
 
+    # Hang-up after `done` can skip the follow-ups yield; finish them here so
+    # reopening the conversation still has suggestions without a free-text route.
+    # None means not attempted yet; [] means already attempted (including provider
+    # failure). Do not retry [] here — that doubles utility spend when the
+    # provider is already struggling.
+    if state["complete"] and not state["refused"] and state["follow_ups"] is None:
+        state["follow_ups"] = generate_follow_ups(body.question, state["answer"])
+
+    follow_ups = list(state["follow_ups"] or [])
+
     _persist(
         body.session_id,
         body.question,
@@ -298,6 +314,7 @@ def _finalize(
         state["sources"],
         state["confidence"],
         state["refused"],
+        follow_ups,
     )
 
     if state["complete"] and state["cache_hit"] is None and is_cacheable_turn(history):
@@ -308,7 +325,7 @@ def _finalize(
                 "answer": state["answer"],
                 "sources": state["sources"],
                 "confidence": state["confidence"],
-                "follow_ups": state["follow_ups"],
+                "follow_ups": follow_ups,
                 "refused": state["refused"],
             },
         )
@@ -345,7 +362,8 @@ def _stream(body: ChatRequest):
         "sources": [],
         "confidence": None,
         "refused": False,
-        "follow_ups": [],
+        # None = not attempted; [] = attempted but unavailable (incl. provider fail).
+        "follow_ups": None,
         "passages": [],
         "cache_hit": None,
         "condensed": body.question,
@@ -439,7 +457,8 @@ def _stream(body: ChatRequest):
 
 
 @router.post("/chat/stream", dependencies=[Depends(require_auth)])
-def chat_stream(body: ChatRequest):
+@limiter.limit(CHAT_RATE_LIMIT)
+def chat_stream(request: Request, body: ChatRequest):
     return StreamingResponse(
         _stream(body),
         media_type="text/event-stream",
@@ -448,14 +467,3 @@ def chat_stream(body: ChatRequest):
             "X-Accel-Buffering": "no",  # tell Nginx not to buffer the stream
         },
     )
-
-
-class FollowUpsRequest(BaseModel):
-    question: str = Field(..., max_length=5000)
-    answer: str = Field(..., max_length=10000)
-
-
-@router.post("/chat/follow-ups", dependencies=[Depends(require_auth)])
-def get_follow_ups(body: FollowUpsRequest):
-    """Regenerate follow-ups — used when reopening a past conversation."""
-    return {"follow_ups": generate_follow_ups(body.question, body.answer)}

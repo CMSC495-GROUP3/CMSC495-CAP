@@ -10,12 +10,14 @@ listing the corpus never touches the embedding vectors.
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pymongo import ASCENDING, UpdateOne
 
 from policy_assistant.api.db import documents_col, meta_col, passages_col
+from policy_assistant.api.limiter import limiter
 from policy_assistant.api.routes.deps import require_auth
 from policy_assistant.rag.cache import bump_corpus_version, get_corpus_version
+from policy_assistant.rag.config import REINDEX_RATE_LIMIT
 
 router = APIRouter()
 
@@ -168,7 +170,8 @@ def get_document_passages(source: str):
 
 
 @router.post("/documents/reindex", dependencies=[Depends(require_auth)])
-def reindex_documents():
+@limiter.limit(REINDEX_RATE_LIMIT)
+def reindex_documents(request: Request):
     """Force a rebuild of the document library and invalidate cached answers.
 
     Bumping the corpus version is what clears the answer cache — entries are

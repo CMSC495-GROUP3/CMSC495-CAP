@@ -24,11 +24,10 @@ from contextlib import asynccontextmanager  # noqa: E402
 import anyio.to_thread  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
 from policy_assistant.api.db import ensure_indexes  # noqa: E402
-from policy_assistant.api.limiter import limiter  # noqa: E402
+from policy_assistant.api.limiter import limiter, rate_limit_exceeded_handler  # noqa: E402
 from policy_assistant.api.routes.auth import (  # noqa: E402
     PasswordHashError,
     validate_password_hashes,
@@ -90,7 +89,7 @@ app = FastAPI(
 
 # Attach limiter state so slowapi can find it on the app instance
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # In production Nginx proxies the API and the frontend under one origin, so CORS
 # is only needed for local development against the Vite dev server.

@@ -127,6 +127,7 @@ from policy_assistant.rag import cache  # noqa: E402
 cache.get_collection = mongo.get_collection
 
 from policy_assistant.api import main  # noqa: E402
+from policy_assistant.api.limiter import limiter  # noqa: E402
 from policy_assistant.api.routes import chat as chat_routes  # noqa: E402
 
 
@@ -151,5 +152,10 @@ main.ensure_indexes = _startup
 # on the modules they came from. Vector search is the one thing the fake cannot
 # emulate, so it is replaced outright.
 chat_routes.retrieve_passages = _fake_retrieve
+
+# The load-test client fires every request from 127.0.0.1. Leave production
+# CHAT_RATE_LIMIT / REINDEX_RATE_LIMIT intact; only this synthetic stub opts out,
+# the same way tests/conftest.py disables the limiter for unit tests.
+limiter.enabled = False
 
 app = main.app

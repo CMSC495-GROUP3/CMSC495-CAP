@@ -1,8 +1,11 @@
 """The chat routes: grounding gate, history handling, streaming protocol,
 caching, and the bookkeeping that must survive a dropped stream."""
 
+import logging
+
 from conftest import FAKE_DB, make_passages, sse_events
 
+from policy_assistant.api.limiter import limiter
 from policy_assistant.api.routes.chat import ChatRequest, _stream, load_history
 from policy_assistant.rag import llm
 from policy_assistant.rag.cache import get_cached_answer, get_corpus_version
@@ -121,9 +124,38 @@ class TestChat:
         assert user == {"role": "user", "content": "How much PTO?"}
         assert assistant["sources"] == ["Paid Time Off (PTO) Policy"]
         assert assistant["confidence"] == 75 and assistant["refused"] is False
+        assert assistant["follow_ups"] == body["follow_ups"]
+        assert len(assistant["follow_ups"]) == 3
 
         log = FAKE_DB["query_logs"].find_one({})
         assert log["best_score"] == 0.80 and log["refused"] is False and log["cache_hit"] is None
+
+    def test_rate_limited_per_client(self, client, auth, retrieval, conversation, caplog):
+        limiter.enabled = True
+        limiter.reset()
+        with caplog.at_level(logging.WARNING, logger="policy_assistant.api.limiter"):
+            statuses = [
+                client.post(
+                    "/api/chat",
+                    json={"question": f"q{i}", "session_id": conversation},
+                    headers=auth,
+                ).status_code
+                for i in range(31)
+            ]
+        assert statuses[:30] == [200] * 30
+        assert statuses[30] == 429
+        assert "Rate limit exceeded for cred=APP_PASSWORD_HASH" in caplog.text
+        assert "/api/chat" in caplog.text
+
+    def test_free_text_follow_ups_route_is_gone(self, client, auth):
+        assert (
+            client.post(
+                "/api/chat/follow-ups",
+                json={"question": "q", "answer": "a"},
+                headers=auth,
+            ).status_code
+            == 404
+        )
 
     def test_generation_failure_is_reported_not_raised(
         self, client, auth, retrieval, conversation, monkeypatch
@@ -276,8 +308,27 @@ class TestDroppedStream:
         gen.close()
 
         assert _messages(conversation)[-1]["content"] == FAKE_ANSWER
+        assert len(_messages(conversation)[-1]["follow_ups"]) == 3
         assert get_cached_answer("How much PTO?", get_corpus_version())["answer"] == FAKE_ANSWER
         assert FAKE_DB["query_logs"].count_documents({}) == 1
+
+    def test_failed_follow_ups_are_not_retried_in_finalize(
+        self, retrieval, conversation, monkeypatch
+    ):
+        """[] means already attempted; finalize must not call the utility model again."""
+        calls = {"n": 0}
+
+        def empty_follow_ups(question: str, answer: str) -> list[str]:
+            calls["n"] += 1
+            return []
+
+        monkeypatch.setattr(
+            "policy_assistant.api.routes.chat.generate_follow_ups", empty_follow_ups
+        )
+        events = list(_stream(ChatRequest(question="How much PTO?", session_id=conversation)))
+        assert any("follow_ups" in e for e in events)
+        assert calls["n"] == 1
+        assert _messages(conversation)[-1]["follow_ups"] == []
 
     def test_hangup_mid_generation_never_caches_a_partial_answer(self, retrieval, conversation):
         gen = _stream(ChatRequest(question="How much PTO?", session_id=conversation))
