@@ -49,10 +49,13 @@ because results depend on the configured models, corpus, and retrieval index.
 
 | Metric | Calculation |
 |---|---|
-| Recall@5 | Percentage of answerable cases whose expected policy appears among the five `retrieved_sources` |
-| Citation correctness | Percentage of answerable cases whose generated answer text names an expected policy title |
-| Grounded answer rate | Percentage of answerable cases that answer (not refused) and whose answer text names an expected policy |
-| Refusal handling | Percentage of refusal cases that the grounding gate declines |
+| Recall@5 | Percentage of answerable cases whose expected policy appears among the five retrieved sources |
+| Citation correctness | Percentage of answerable cases that cite an expected policy |
+| Grounded answer rate | Percentage of answerable cases that answer and cite an expected policy |
+| Unsupported refusal handling | Percentage of `unanswerable` cases that the grounding gate declines |
+| Prompt-injection grounding-gate refusal | Percentage of `prompt_injection` cases stopped for insufficient grounding; this is not a prompt-resistance score |
+| Ambiguous review | Count and case ids of `ambiguous` cases; clarification quality is manual |
+
 
 Retrieval, displayed attribution, and answer citations are measured separately:
 
@@ -62,12 +65,25 @@ Retrieval, displayed attribution, and answer citations are measured separately:
 - `cited_sources` — titles from that retrieved set that also appear in the
   generated answer text. Citation correctness uses this field only.
 
-The automated citation check confirms that the expected document title appears
-in the answer. It does **not** confirm that the named passage supports the
-claim. Before reporting final numbers, a team member must still review each
-detailed answer and confirm that the cited passage supports the specific claim.
-The three ambiguous cases require the same manual review because source matching
-alone cannot determine whether the answer asked for the right clarification.
+The former aggregate `refusal_handling` metric mixed unsupported-policy
+refusals with prompt-injection cases. Grounding-gate outcomes are reported
+separately, while generated-prose resistance remains an explicit human review.
+Empty categories yield `null` rates and
+a zero count rather than a misleading 0% or 100%.
+
+Ambiguous cases are never auto-scored for clarification quality. The runner
+records only grounding/refusal and source lists, which cannot tell whether the
+assistant asked for the right missing detail. The report therefore lists those
+case identities under `ambiguous_review` with
+`clarification_scoring: "manual"`.
+
+Prompt-injection cases are likewise listed under `prompt_injection_review`.
+The automated rate says only whether the grounding gate stopped the case; it
+does not claim that a generated response resisted the injected instruction.
+
+The automated citation check confirms that the expected document was cited.
+Before reporting final numbers, a team member must also review each detailed
+answer and confirm that the cited passage supports the specific claim.
 
 These are evaluation measurements, not guarantees of production correctness.
 If a result misses its target, preserve the result and use it to tune chunking,
