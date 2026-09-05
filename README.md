@@ -252,12 +252,24 @@ history handling, same reason: a client that could supply its own text could
 escalate an exchange that never happened. Escalating the same message twice
 returns the first record instead of filing a second.
 
-Records land in the `escalations` collection with status `open`. If
-`ESCALATION_WEBHOOK_URL` is set, each one is also posted there in a background
-task after the response is sent. The payload has a top-level `text` field, so a
-Slack or Teams incoming webhook renders it with no adapter. Delivery is best
-effort and logged on failure. The record is already stored, and a webhook
-outage must not turn a successful hand-off into an error.
+Records land in the `escalations` collection with status `open` and delivery
+status `pending`. If `ESCALATION_WEBHOOK_URL` is set, each one is also posted
+there in a background task after the response is sent. The payload has a
+top-level `text` field, so a Slack or Teams incoming webhook renders it with no
+adapter. Each attempt updates non-secret delivery fields on the record
+(`pending` / `delivered` / `failed`, attempt count, last-attempt time). Delivery
+is best effort and logged on failure; the webhook URL is never stored, logged,
+or returned. The record is already stored, and a webhook outage must not turn a
+successful hand-off into an error. Failed deliveries can be retried with
+`POST /api/escalations/{id}/retry-delivery` up to
+`ESCALATION_WEBHOOK_MAX_ATTEMPTS`, with an atomic claim so concurrent retries
+cannot double-send. Claims older than `ESCALATION_WEBHOOK_LEASE_SECONDS`
+(default 30) can be recovered after a worker interruption. The lease must be
+greater than `ESCALATION_WEBHOOK_TIMEOUT_SECONDS`; invalid configuration fails
+at startup. Records created before delivery tracking can be claimed as legacy work. Delivery is
+at-least-once: a receiver that accepts a request immediately before the worker
+dies may see the same escalation again, so consumers should deduplicate by
+`escalation_id`.
 
 Whoever handles the queue lists it with `GET /api/escalations?status=open` and
 closes an item with `PATCH /api/escalations/{id}` and a resolution note. There
@@ -428,9 +440,11 @@ Three things to know before handing one out. Both passwords open the same
 door, so the deployment is exactly as strong as the weaker of the two; do not
 make the second one short because it is temporary. Each successful login logs
 which variable matched and puts that name in the token's `cred` claim, which
-is how to tell a reviewer's session from the team's afterwards. Unsetting the
-variable stops new logins with that password, but tokens already issued live
-for 24 hours, so unset it a day before it has to be dead.
+is how to tell a reviewer's session from the team's afterwards. Changing or
+unsetting a hash signs out everyone who logged in with it: each session is
+bound to a fingerprint of that hash, so the next request with the old token
+fails. Rotating `JWT_SECRET_KEY` is no longer needed just to revoke one
+password's sessions; the other password's sessions keep working.
 
 ### 2. Load the corpus
 
@@ -487,8 +501,14 @@ locally, plus one variable in `.env`.
 2. In the DuckDNS dashboard, point the subdomain at that address.
 3. Security group inbound rules: 80 and 443 from anywhere, 22 from your own
    address. Leave 3000 and 8000 closed; nothing listens on them.
-4. On the instance, install Docker, clone the repository, and write `.env` as
-   in step 1 with one extra line:
+4. On the instance, install Docker, clone the repository into
+   `/home/ubuntu/CMSC495-CAP`, and write `.env` as in step 1 with one extra
+   line:
+
+   ```bash
+   git clone https://github.com/CMSC495-GROUP3/Sourcebook.git /home/ubuntu/CMSC495-CAP
+   cd /home/ubuntu/CMSC495-CAP
+   ```
 
    ```dotenv
    SITE_ADDRESS=sourcebook.duckdns.org
@@ -504,8 +524,8 @@ locally, plus one variable in `.env`.
    Encrypt HTTP challenge on port 80 on the first request. If the challenge
    fails it retries with backoff, and `docker compose logs caddy` shows why.
 
-6. Turn on automatic deploys. The checkout must live at
-   `/home/ubuntu/CMSC495-CAP`, which is where the unit file points:
+6. Turn on automatic deploys. The checkout must already be at
+   `/home/ubuntu/CMSC495-CAP` (step 4); that is where the unit file points:
 
    ```bash
    sudo cp scripts/systemd/auto-deploy.* /etc/systemd/system/
@@ -735,7 +755,7 @@ policy_assistant/   the Python application, one package, absolute imports only
       conversations.py  saved conversations and their citations
       projects.py       folders that group conversations
       documents.py      browse and search the indexed corpus
-      escalations.py    hand a question to a person; open queue; resolve
+      escalations.py    hand a question to a person; open queue; resolve; retry delivery
   rag/              the pipeline, imported by api/ and run offline for ingestion
     config.py         every tuning knob, env-overridable; defaults live here
     llm.py            LLMProvider interface, the only vendor-aware module

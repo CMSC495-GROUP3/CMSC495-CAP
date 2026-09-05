@@ -76,14 +76,54 @@ def _percentage(outcomes: Iterable[bool]) -> float | None:
     return round(100 * sum(values) / len(values), 1)
 
 
+def extract_answer_citations(answer: str, known_titles: Iterable[str]) -> list[str]:
+    """Return known policy titles that appear in the generated answer text.
+
+    Matching is case-insensitive and prefers longer titles first so a short
+    title cannot claim a hit inside a longer one. Only titles from the
+    retrieved set are considered; this measures whether the answer named a
+    retrieved policy, not whether the UI listed retrieval hits.
+    """
+    titles = [title for title in known_titles if isinstance(title, str) and title.strip()]
+    if not answer or not titles:
+        return []
+
+    haystack = answer.casefold()
+    matched: list[tuple[int, str]] = []
+    occupied: list[tuple[int, int]] = []
+
+    for title in sorted(titles, key=len, reverse=True):
+        needle = title.casefold()
+        start = 0
+        while True:
+            index = haystack.find(needle, start)
+            if index < 0:
+                break
+            end = index + len(needle)
+            overlaps = any(
+                index < occupied_end and end > occupied_start
+                for occupied_start, occupied_end in occupied
+            )
+            if not overlaps:
+                matched.append((index, title))
+                occupied.append((index, end))
+                break
+            start = index + 1
+
+    matched.sort(key=lambda item: item[0])
+    return [title for _, title in matched]
+
+
 def score_results(
     cases: list[dict[str, Any]], results: list[dict[str, Any]]
 ) -> dict[str, float | int | None]:
     """Calculate the four Week 3 metrics from case level results.
 
-    Recall@5 and answer quality use only cases whose expected outcome is an
-    answer. Ambiguous questions are inspected separately because a useful
-    clarification cannot be judged reliably by source matching alone.
+    Recall@5 uses ``retrieved_sources`` only. Citation correctness and grounded
+    answer rate use ``cited_sources``, which must be titles found in the
+    generated answer rather than the retrieved or displayed attribution lists.
+    Ambiguous questions remain a manual review: source matching alone cannot
+    judge whether a clarification asked for the right missing detail.
     """
     result_by_id: dict[str, dict[str, Any]] = {}
     for result in results:
@@ -145,12 +185,18 @@ def run_live_case(case: dict[str, Any]) -> dict[str, Any]:
             temperature=0,
         )
 
+    # Displayed attribution mirrors what the chat API attaches to an answered
+    # turn (retrieved titles). Answer citations are derived separately.
+    displayed_sources = retrieved_sources if grounded else []
+    answer_citations = extract_answer_citations(answer, retrieved_sources)
+
     return {
         "id": case["id"],
         "category": case["category"],
         "question": case["question"],
         "retrieved_sources": retrieved_sources,
-        "cited_sources": retrieved_sources if grounded else [],
+        "displayed_sources": displayed_sources,
+        "cited_sources": answer_citations,
         "confidence": confidence_score(passages),
         "refused": not grounded,
         "answer": answer,

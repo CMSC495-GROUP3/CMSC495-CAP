@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import re
@@ -22,6 +23,10 @@ TOKEN_EXPIRE_HOURS = 24
 # 5.x raises. Truncating here keeps a deployment whose password is longer than
 # that working across the upgrade, matching the behaviour before this change.
 BCRYPT_MAX_PASSWORD_BYTES = 72
+
+# Bound into the JWT so require_auth can tell a rotated hash from the one that
+# opened the session. First 12 hex chars of sha256(hash) — never the hash.
+FINGERPRINT_HEX_LEN = 12
 
 # Whole-string shape of a bcrypt hash: prefix, two-digit cost in bcrypt's legal
 # range, then 22 salt and 31 checksum characters. bcrypt.checkpw only parses the
@@ -134,6 +139,15 @@ def _client_host(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def credential_fingerprint(password_hash: str) -> str:
+    """Stable token claim derived from a password hash.
+
+    Short enough to keep the JWT small; collision-resistant enough that a
+    rotated hash will not match by chance. Never put the hash itself in a token.
+    """
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:FINGERPRINT_HEX_LEN]
+
+
 def create_access_token(data: dict, expires_delta: timedelta) -> str:
     payload = data.copy()
     payload.update({"exp": datetime.now(UTC) + expires_delta})
@@ -149,9 +163,12 @@ def login(request: Request, body: LoginRequest):
     # thing a shorter response reveals is which variable the password lives
     # in, and the only party who can observe that has just logged in with it.
     candidate = _encode_candidate(body.password)
-    matched = None
+    matched: tuple[str, str] | None = None
     if candidate is not None:
-        matched = next((name for name, value in hashes if _check(candidate, name, value)), None)
+        matched = next(
+            ((name, value) for name, value in hashes if _check(candidate, name, value)),
+            None,
+        )
     if matched is None:
         logger.warning("Failed login attempt from %s", _client_host(request))
         raise HTTPException(
@@ -160,11 +177,17 @@ def login(request: Request, body: LoginRequest):
         )
 
     # Both passwords open the same door. Recording which one was used is the
-    # only way to tell a reviewer's session from the team's afterwards. The
-    # claim is a variable name, never a hash or a password.
-    logger.info("Login with %s from %s", matched, _client_host(request))
+    # only way to tell a reviewer's session from the team's afterwards. cred is
+    # the variable name; fingerprint binds the session to that hash so rotating
+    # it revokes those sessions without touching JWT_SECRET_KEY.
+    cred, password_hash = matched
+    logger.info("Login with %s from %s", cred, _client_host(request))
     token = create_access_token(
-        data={"sub": "user", "cred": matched},
+        data={
+            "sub": "user",
+            "cred": cred,
+            "fingerprint": credential_fingerprint(password_hash),
+        },
         expires_delta=timedelta(hours=TOKEN_EXPIRE_HOURS),
     )
     return TokenResponse(access_token=token)

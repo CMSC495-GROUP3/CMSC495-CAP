@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from policy_assistant.rag.evaluation import load_cases, score_results
+from policy_assistant.rag.evaluation import (
+    extract_answer_citations,
+    load_cases,
+    score_results,
+)
 
 DATASET = Path(__file__).resolve().parent.parent / "evaluation" / "questions.json"
 
@@ -18,11 +22,30 @@ def test_dataset_has_required_twenty_case_mix():
         category: sum(case["category"] == category for case in cases)
         for category in {case["category"] for case in cases}
     } == {
-        "answerable": 10,
-        "unanswerable": 4,
+        "answerable": 12,
+        "unanswerable": 2,
         "ambiguous": 3,
         "prompt_injection": 3,
     }
+
+
+def test_corpus_aligned_answerable_labels():
+    """Tuition and dress-code questions stay answerable while those policies exist."""
+    cases = {case["id"]: case for case in load_cases(DATASET)}
+
+    tuition = cases["answerable_11"]
+    assert tuition["category"] == "answerable"
+    assert tuition["expected_outcome"] == "answer"
+    assert tuition["expected_sources"] == [
+        "Tuition Reimbursement and Professional Development Policy"
+    ]
+    assert "tuition" in tuition["question"].lower()
+
+    dress = cases["answerable_12"]
+    assert dress["category"] == "answerable"
+    assert dress["expected_outcome"] == "answer"
+    assert dress["expected_sources"] == ["Dress Code and Workplace Appearance Policy"]
+    assert "dress" in dress["question"].lower()
 
 
 def test_every_case_records_expected_source_and_behavior():
@@ -124,3 +147,121 @@ def test_score_results_uses_none_when_a_metric_has_no_eligible_cases():
     assert report["citation_correctness"] is None
     assert report["grounded_answer_rate"] is None
     assert report["refusal_handling"] is None
+
+
+def test_extract_answer_citations_finds_known_titles_in_answer_order():
+    answer = (
+        "Per the Remote and Hybrid Work Policy, Tuesday is an anchor day. "
+        "The Paid Time Off (PTO) Policy also applies."
+    )
+    known = [
+        "Paid Time Off (PTO) Policy",
+        "Remote and Hybrid Work Policy",
+        "Parental Leave Policy",
+    ]
+
+    assert extract_answer_citations(answer, known) == [
+        "Remote and Hybrid Work Policy",
+        "Paid Time Off (PTO) Policy",
+    ]
+
+
+def test_extract_answer_citations_is_case_insensitive_and_ignores_unknown_titles():
+    answer = "According to the paid time off (pto) policy, you receive 15 days."
+    known = ["Paid Time Off (PTO) Policy", "Code of Conduct"]
+
+    assert extract_answer_citations(answer, known) == ["Paid Time Off (PTO) Policy"]
+    assert extract_answer_citations(answer, ["Code of Conduct"]) == []
+    assert extract_answer_citations("", known) == []
+
+
+def test_citation_correctness_fails_when_answer_omits_retrieved_policy():
+    """Retrieval can succeed while the answer never names the expected policy."""
+    cases = [
+        {
+            "id": "a1",
+            "category": "answerable",
+            "expected_sources": ["Paid Time Off (PTO) Policy"],
+            "expected_outcome": "answer",
+        }
+    ]
+    retrieved = ["Paid Time Off (PTO) Policy", "Code of Conduct"]
+    answer = "Full-time employees with two years of service receive 15 PTO days."
+    results = [
+        {
+            "id": "a1",
+            "retrieved_sources": retrieved,
+            "displayed_sources": retrieved,
+            "cited_sources": extract_answer_citations(answer, retrieved),
+            "refused": False,
+            "answer": answer,
+        }
+    ]
+
+    report = score_results(cases, results)
+
+    assert report["recall_at_5"] == 100.0
+    assert results[0]["cited_sources"] == []
+    assert report["citation_correctness"] == 0.0
+    assert report["grounded_answer_rate"] == 0.0
+
+
+def test_citation_correctness_fails_when_answer_names_wrong_retrieved_policy():
+    """Naming a different retrieved title must not count as a correct citation."""
+    cases = [
+        {
+            "id": "a1",
+            "category": "answerable",
+            "expected_sources": ["Paid Time Off (PTO) Policy"],
+            "expected_outcome": "answer",
+        }
+    ]
+    retrieved = ["Paid Time Off (PTO) Policy", "Code of Conduct"]
+    answer = "See the Code of Conduct for leave details."
+    results = [
+        {
+            "id": "a1",
+            "retrieved_sources": retrieved,
+            "displayed_sources": retrieved,
+            "cited_sources": extract_answer_citations(answer, retrieved),
+            "refused": False,
+            "answer": answer,
+        }
+    ]
+
+    report = score_results(cases, results)
+
+    assert report["recall_at_5"] == 100.0
+    assert results[0]["cited_sources"] == ["Code of Conduct"]
+    assert report["citation_correctness"] == 0.0
+    assert report["grounded_answer_rate"] == 0.0
+
+
+def test_citation_correctness_passes_only_when_answer_names_expected_policy():
+    cases = [
+        {
+            "id": "a1",
+            "category": "answerable",
+            "expected_sources": ["Paid Time Off (PTO) Policy"],
+            "expected_outcome": "answer",
+        }
+    ]
+    retrieved = ["Paid Time Off (PTO) Policy", "Code of Conduct"]
+    answer = "The Paid Time Off (PTO) Policy grants 15 days after two years."
+    results = [
+        {
+            "id": "a1",
+            "retrieved_sources": retrieved,
+            "displayed_sources": retrieved,
+            "cited_sources": extract_answer_citations(answer, retrieved),
+            "refused": False,
+            "answer": answer,
+        }
+    ]
+
+    report = score_results(cases, results)
+
+    assert report["recall_at_5"] == 100.0
+    assert results[0]["cited_sources"] == ["Paid Time Off (PTO) Policy"]
+    assert report["citation_correctness"] == 100.0
+    assert report["grounded_answer_rate"] == 100.0

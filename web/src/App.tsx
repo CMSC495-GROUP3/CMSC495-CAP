@@ -1,10 +1,21 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { TOKEN_KEY } from './api/client'
+import { TOKEN_KEY, isTokenExpired } from './api/client'
 import LoginForm from './components/Auth/LoginForm'
 import Sidebar from './components/Layout/Sidebar'
 import ChatPage from './pages/ChatPage'
 import DocumentLibraryPage from './pages/DocumentLibraryPage'
+
+/** True when localStorage holds a JWT that has not yet expired. */
+function readIsAuthenticated(): boolean {
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (!token) return false
+  if (isTokenExpired(token)) {
+    localStorage.removeItem(TOKEN_KEY)
+    return false
+  }
+  return true
+}
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,9 +30,7 @@ export default function App() {
   // Single source of truth for auth state lives here.
   // LoginForm calls onSuccess() which updates this state directly,
   // so App re-renders immediately and switches to the protected layout.
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => !!localStorage.getItem(TOKEN_KEY)
-  )
+  const [isAuthenticated, setIsAuthenticated] = useState(readIsAuthenticated)
 
   if (!isAuthenticated) {
     return <LoginForm onSuccess={() => setIsAuthenticated(true)} />
