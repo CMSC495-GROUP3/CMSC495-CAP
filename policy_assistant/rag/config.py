@@ -124,7 +124,7 @@ EMBEDDING_CACHE_TTL_SECONDS = int(os.getenv("EMBEDDING_CACHE_TTL_SECONDS", str(3
 # Bump this whenever ANSWER_SYSTEM_PROMPT changes. It is part of the answer
 # cache key, so without a bump a prompt fix would keep serving pre-fix answers
 # until the TTL expired.
-PROMPT_VERSION = os.getenv("PROMPT_VERSION", "v2")
+PROMPT_VERSION = os.getenv("PROMPT_VERSION", "v3")
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
 # Every chat request writes one query_logs record. This is the substrate for

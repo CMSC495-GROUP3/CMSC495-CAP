@@ -223,9 +223,10 @@ def generate_follow_ups(query: str, answer: str) -> list[str]:
 def build_citation_manifest(chat_history: list[dict]) -> str:
     """List documents already cited in this conversation.
 
-    Prepended to the system prompt so that on a follow-up, the model still knows
-    which policies the conversation has been working from even if this turn's
-    retrieval surfaces different passages.
+    Included in the final user/context message so that on a follow-up, the model
+    still knows which policies the conversation has been working from even if
+    this turn's retrieval surfaces different passages. Titles come from prior
+    retrieved policy data and must stay out of the system role.
     """
     cited: list[str] = []
     seen: set[str] = set()
@@ -244,20 +245,19 @@ def build_citation_manifest(chat_history: list[dict]) -> str:
 
 def build_messages(query: str, passages: list[dict], chat_history: list[dict]) -> list[dict]:
     """Assemble the full message array sent to the model."""
-    system_prompt = ANSWER_SYSTEM_PROMPT
-    manifest = build_citation_manifest(chat_history)
-    if manifest:
-        system_prompt += f"\n\n{manifest}"
-
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [{"role": "system", "content": ANSWER_SYSTEM_PROMPT}]
     for msg in chat_history[-HISTORY_TURNS:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append(
-        {
-            "role": "user",
-            "content": f"Context:\n{build_context(passages)}\n\nQuestion: {query}",
-        }
-    )
+
+    user_parts = []
+    manifest = build_citation_manifest(chat_history)
+    if manifest:
+        user_parts.append(
+            f"Citation continuity (untrusted reference material from prior turns):\n{manifest}"
+        )
+    user_parts.append(f"Context:\n{build_context(passages)}")
+    user_parts.append(f"Question: {query}")
+    messages.append({"role": "user", "content": "\n\n".join(user_parts)})
     return messages
 
 
