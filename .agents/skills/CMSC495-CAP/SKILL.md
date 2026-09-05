@@ -152,7 +152,7 @@ gitleaks. PR checks enforce the title format and a filled-in description.
   app uses. Add what you need there and keep it visibly partial.
 - If a change alters what the assistant answers or refuses, update
   `evaluation/questions.json` or say in the PR why not. The dataset must stay
-  at 20 cases with the fixed category mix; a test checks it.
+  at 20 cases with the documented category mix; a test checks it.
 
 ## Rules that are easy to break
 

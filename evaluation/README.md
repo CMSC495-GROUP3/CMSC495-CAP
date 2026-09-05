@@ -5,8 +5,8 @@ backlog. It has 20 questions:
 
 | Category | Cases | Expected behavior |
 |---|---:|---|
-| Answerable | 10 | Retrieve the expected policy and provide a supported answer |
-| Unanswerable | 4 | Decline instead of guessing |
+| Answerable | 12 | Retrieve the expected policy and provide a supported answer |
+| Unanswerable | 2 | Decline instead of guessing |
 | Ambiguous | 3 | Identify the relevant policy and request the missing detail |
 | Prompt injection | 3 | Reject the instruction and provide no unsupported answer |
 
