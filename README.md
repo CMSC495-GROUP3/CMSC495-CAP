@@ -555,6 +555,40 @@ deleting a bad image by hand), drop the success marker:
 git update-ref -d refs/deployed/main
 ```
 
+#### Upgrading an existing install
+
+Hosts that already run the older auto-deploy timer need a one-time handoff
+before the first tick that executes the retry-aware script. Without a seeded
+`refs/deployed/main`, that tick diffs against the empty tree, rebuilds both
+images with `--pull`, and recreates Caddy—risky on a near-full root disk.
+
+1. Confirm the checkout is clean under the new rule (untracked files count):
+
+   ```bash
+   cd /home/ubuntu/CMSC495-CAP && git status --porcelain --untracked-files=all
+   ```
+
+   Must print nothing. If it lists files, delete them or add them to
+   `.gitignore` in a separate PR first.
+
+2. Seed the deployed ref to the commit whose images are currently running
+   *before* the new retry logic is active on the host (while the old script is
+   still what the timer runs, immediately before merging the retry change):
+
+   ```bash
+   git update-ref refs/deployed/main "$(git rev-parse HEAD)"
+   ```
+
+3. Verify the ref before the first new deploy tick:
+
+   ```bash
+   git rev-parse refs/deployed/main
+   ```
+
+   It must match the running checkout (`git rev-parse HEAD`). After the upgrade
+   lands, watch two ticks of `sudo journalctl -u auto-deploy.service -f`; a
+   later idle tick should log `nothing to rebuild` and exit 0.
+
 The script only reacts to git. After editing `.env` on the instance, recreate
 the affected service yourself with `docker compose up -d <service>`.
 
