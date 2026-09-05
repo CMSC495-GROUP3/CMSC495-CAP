@@ -1,6 +1,7 @@
 """Regression tests for the labeled AI evaluation set and its metrics."""
 
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -332,3 +333,44 @@ def test_citation_correctness_passes_only_when_answer_names_expected_policy():
     assert results[0]["cited_sources"] == ["Paid Time Off (PTO) Policy"]
     assert report["citation_correctness"] == 100.0
     assert report["grounded_answer_rate"] == 100.0
+
+
+def test_hr_lifecycle_policies_resolve_cross_policy_conflicts():
+    """Codex conflict gate: sick/PTO banks, severance/PTO, injury/safety, naming, COBRA, FMLA."""
+    policy_dir = Path(__file__).resolve().parent.parent / "data" / "sample-policies"
+    texts = {path.name: path.read_text(encoding="utf-8") for path in policy_dir.glob("*.md")}
+    pto = texts["pto-policy.md"]
+    sick = texts["sick-and-safe-leave.md"]
+    severance = texts["separation-and-severance.md"]
+    injury = texts["workplace-injury-and-workers-compensation.md"]
+    safety = texts["workplace-safety.md"]
+    cobra = texts["benefits-continuation-cobra.md"]
+    medical = texts["medical-and-family-leave.md"]
+
+    new_policy_blob = sick + severance + injury + cobra + medical
+    assert "Meridian Technologies" not in new_policy_blob
+    assert "Meridian Systems" in sick
+    assert "separate" in sick.casefold() and "pto" in sick.casefold()
+    assert "Sick and Safe Leave Policy" in pto
+    overview = pto.split("## Overview", 1)[1].split("## Accrual", 1)[0].casefold()
+    assert "vacation and personal" in overview
+    assert "short-term illness in a single balance" not in overview
+
+    assert "PTO Policy" in severance
+    assert "Workplace Health and Safety Policy" in injury
+    assert "meridian.io/safety-report" in safety
+    assert "later of" in cobra.casefold()
+    assert "election notice is delivered" in cobra.casefold()
+    assert "distinct from statutory fmla" in medical.casefold()
+
+    cases = {case["id"]: case for case in load_cases(FULL_DATASET)}
+    for case_id in (
+        "full_answerable_43",
+        "full_answerable_44",
+        "full_answerable_45",
+        "full_answerable_41",
+    ):
+        assert case_id in cases
+    assert "Paid Time Off (PTO) Policy" in cases["full_answerable_43"]["expected_sources"]
+    assert "later of coverage loss" in cases["full_answerable_41"]["expected_behavior"].casefold()
+    validate_sources_against_corpus(load_cases(FULL_DATASET))

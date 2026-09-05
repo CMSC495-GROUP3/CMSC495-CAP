@@ -6,8 +6,10 @@ Effective: 2026-01-01
 ## Overview
 
 Meridian Systems provides paid time off to all regular full-time and part-time
-employees. PTO covers vacation, personal days, and short-term illness in a
-single balance. You do not need to categorize a request as sick versus vacation.
+employees. PTO covers vacation and personal days in a single balance. Short-term
+illness and safe leave use the separate Sick and Safe Leave Policy bank; they are
+not drawn from the PTO balance. You do not need to categorize a vacation or
+personal-day request beyond those two uses.
 
 ## Accrual
 
@@ -41,8 +43,9 @@ three days or more, and at least 2 business days in advance for shorter
 absences. Your manager will approve or decline within 3 business days.
 
 For unplanned illness, notify your manager as early as possible on the day of
-the absence, by whatever channel your team normally uses. Retroactive PTO
-requests for sick days should be entered within 3 business days of returning.
+the absence, by whatever channel your team normally uses, and record the time
+under the Sick and Safe Leave Policy (not as PTO). Retroactive sick and safe
+leave entries should be submitted within 3 business days of returning.
 
 Requests are generally approved unless coverage is a genuine problem. If a
 request is declined, your manager must offer alternative dates.
@@ -51,8 +54,10 @@ request is declined, your manager must offer alternative dates.
 
 Any absence longer than five consecutive business days requires approval from
 both your manager and People Operations. If the absence is medical, it may be
-covered under short-term disability or FMLA rather than PTO — contact People
-Operations before your leave begins so it is classified correctly.
+covered under short-term disability, company medical and family leave, or
+statutory FMLA rather than PTO — contact People Operations before your leave
+begins so it is classified correctly. Company medical leave and FMLA are
+distinct; see the Medical and Family Leave Policy.
 
 ## Holidays
 

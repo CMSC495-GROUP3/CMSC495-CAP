@@ -5,17 +5,24 @@ Effective: 2026-01-01
 
 ## Purpose
 
-This fictional Meridian Technologies policy explains how employees report
+This fictional Meridian Systems policy explains how employees report
 workplace injuries and how Meridian coordinates workers' compensation claims.
 Workers' compensation coverage and benefit levels are set by applicable law and
 the insurance carrier; this policy does not promise a specific benefit amount.
 
 ## Immediate steps after an injury
 
-1. Get medical attention for any serious injury.
+Follow the Workplace Health and Safety Policy incident workflow first (medical
+emergency response, Facilities/manager notice, and the meridian.io/safety-report
+incident form). Then complete the workers' compensation steps below.
+
+1. Get medical attention for any serious injury (call 911 when appropriate, then
+   notify building security so responders can be directed).
 2. Notify your manager or People Operations as soon as practical, and no later
-   than the end of the shift when possible.
-3. Complete an incident report in Workday under Workplace Injury.
+   than the end of the shift when possible, consistent with the Workplace Health
+   and Safety Policy reporting window.
+3. Complete the safety incident form and the Workday Workplace Injury report so
+   People Operations can open the carrier claim.
 
 Failure to report promptly can delay claim handling; it does not by itself forfeit
 legal rights that a jurisdiction may preserve.

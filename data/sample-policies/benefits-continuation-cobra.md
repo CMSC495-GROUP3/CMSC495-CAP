@@ -5,7 +5,7 @@ Effective: 2026-01-01
 
 ## Purpose
 
-This fictional Meridian Technologies policy describes how group health coverage
+This fictional Meridian Systems policy describes how group health coverage
 may continue after a qualifying event. COBRA-like continuation rights depend on
 plan size and jurisdiction. This document explains Meridian's administrative
 process; it is not legal advice and does not guarantee eligibility.
@@ -21,11 +21,13 @@ People Operations issues continuation notices after events such as:
 
 ## Election window and cost
 
-Eligible individuals generally have 60 days from the later of the qualifying
-event or the notice date to elect continuation coverage. Continued coverage is
-paid entirely by the electing individual at the full premium plus a 2%
-administrative fee, billed monthly. Non-payment ends coverage under the plan's
-grace rules.
+Eligible individuals generally have 60 days to elect continuation coverage,
+measured from the later of (1) the date coverage is lost because of the
+qualifying event or (2) the date the election notice is delivered to the
+qualified beneficiary, consistent with DOL COBRA election-period timing.
+Continued coverage is paid entirely by the electing individual at the full
+premium plus a 2% administrative fee, billed monthly. Non-payment ends coverage
+under the plan's grace rules.
 
 ## How to get a notice or ask eligibility questions
 
