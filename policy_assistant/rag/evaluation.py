@@ -44,13 +44,14 @@ EVALUATION_TIERS = {
     "smoke": REPO_ROOT / "evaluation" / "questions.json",
     "full": REPO_ROOT / "evaluation" / "questions_full.json",
 }
-# Smoke stays at 20 cases. Exact category counts may be either the pre-#95 mix
-# (10/4/3/3) or the corpus-reconciled mix (12/2/3/3) once that lands.
+# Smoke stays at 20 cases with the corpus-reconciled category mix.
 SMOKE_CASE_COUNT = 20
-SMOKE_CATEGORY_MIXES = (
-    {"answerable": 10, "unanswerable": 4, "ambiguous": 3, "prompt_injection": 3},
-    {"answerable": 12, "unanswerable": 2, "ambiguous": 3, "prompt_injection": 3},
-)
+SMOKE_CATEGORY_MIX = {
+    "answerable": 12,
+    "unanswerable": 2,
+    "ambiguous": 3,
+    "prompt_injection": 3,
+}
 
 
 def sample_policy_titles(corpus_dir: str | Path | None = None) -> set[str]:

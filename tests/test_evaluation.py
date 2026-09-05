@@ -7,7 +7,7 @@ import pytest
 from policy_assistant.rag.evaluation import (
     EVALUATION_TIERS,
     SMOKE_CASE_COUNT,
-    SMOKE_CATEGORY_MIXES,
+    SMOKE_CATEGORY_MIX,
     extract_answer_citations,
     load_cases,
     main,
@@ -30,8 +30,7 @@ def test_smoke_dataset_has_required_twenty_case_mix():
         category: sum(case["category"] == category for case in cases)
         for category in {case["category"] for case in cases}
     }
-    # Accept current main (10/4/3/3) or the #95 reconciled mix (12/2/3/3).
-    assert mix in SMOKE_CATEGORY_MIXES
+    assert mix == SMOKE_CATEGORY_MIX
 
 
 def test_full_dataset_covers_every_sample_policy():
