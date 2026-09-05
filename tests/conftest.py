@@ -54,7 +54,11 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from policy_assistant.api.limiter import limiter  # noqa: E402
 from policy_assistant.api.routes import chat as chat_routes  # noqa: E402
-from policy_assistant.api.routes.auth import create_access_token  # noqa: E402
+from policy_assistant.api.routes.auth import (  # noqa: E402
+    PRIMARY_PASSWORD_HASH_VAR,
+    create_access_token,
+    credential_fingerprint,
+)
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
 
@@ -114,7 +118,15 @@ def client():
 
 @pytest.fixture
 def auth() -> dict:
-    token = create_access_token({"sub": "user"}, timedelta(hours=1))
+    password_hash = os.environ["APP_PASSWORD_HASH"]
+    token = create_access_token(
+        {
+            "sub": "user",
+            "cred": PRIMARY_PASSWORD_HASH_VAR,
+            "fingerprint": credential_fingerprint(password_hash),
+        },
+        timedelta(hours=1),
+    )
     return {"Authorization": f"Bearer {token}"}
 
 

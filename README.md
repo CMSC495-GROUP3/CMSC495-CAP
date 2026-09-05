@@ -428,9 +428,11 @@ Three things to know before handing one out. Both passwords open the same
 door, so the deployment is exactly as strong as the weaker of the two; do not
 make the second one short because it is temporary. Each successful login logs
 which variable matched and puts that name in the token's `cred` claim, which
-is how to tell a reviewer's session from the team's afterwards. Unsetting the
-variable stops new logins with that password, but tokens already issued live
-for 24 hours, so unset it a day before it has to be dead.
+is how to tell a reviewer's session from the team's afterwards. Changing or
+unsetting a hash signs out everyone who logged in with it: each session is
+bound to a fingerprint of that hash, so the next request with the old token
+fails. Rotating `JWT_SECRET_KEY` is no longer needed just to revoke one
+password's sessions; the other password's sessions keep working.
 
 ### 2. Load the corpus
 
