@@ -53,13 +53,22 @@ def create_project(body: CreateProjectRequest):
 
 @router.delete("/projects/{project_id}", dependencies=[Depends(require_auth)])
 def delete_project(project_id: str):
-    result = projects_col.delete_one({"project_id": project_id})
-    if result.deleted_count == 0:
+    """Delete a project after releasing its conversations.
+
+    Order is confirm-exists → unassign conversations → delete project so a
+    missing id is a side-effect-free 404. A concurrent delete can still race:
+    another request may remove the project between find_one and delete_one, in
+    which case this caller returns 404 after conversations were already
+    released (idempotent with respect to the assignment).
+    """
+    if projects_col.find_one({"project_id": project_id}) is None:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    # The project existed, so release its conversations after deleting it.
     conversations_col.update_many(
         {"project_id": project_id},
         {"$set": {"project_id": None}},
     )
+    result = projects_col.delete_one({"project_id": project_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found.")
     return {"ok": True}

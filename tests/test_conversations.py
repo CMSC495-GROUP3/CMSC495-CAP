@@ -1,6 +1,9 @@
 """Conversation and project CRUD."""
 
-from policy_assistant.api.db import conversations_col
+import pytest
+
+from policy_assistant.api.db import conversations_col, projects_col
+from policy_assistant.api.routes import projects as projects_routes
 
 
 def test_conversation_lifecycle(client, auth):
@@ -102,6 +105,27 @@ def test_deleting_unknown_project_does_not_unassign_orphaned_conversation(client
         client.get("/api/conversations/legacy-orphan", headers=auth).json()["project_id"]
         == "missing"
     )
+
+
+def test_delete_project_keeps_project_when_unassign_raises(client, auth, monkeypatch):
+    """If update_many fails, the project must still be present (no delete yet)."""
+    project = client.post("/api/projects", json={"name": "Fragile"}, headers=auth).json()
+    pid = project["project_id"]
+    sid = client.post(
+        "/api/conversations", json={"title": "c", "project_id": pid}, headers=auth
+    ).json()["session_id"]
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("injected update_many failure")
+
+    monkeypatch.setattr(projects_routes.conversations_col, "update_many", boom)
+
+    with pytest.raises(RuntimeError, match="injected update_many failure"):
+        client.delete(f"/api/projects/{pid}", headers=auth)
+
+    assert projects_col.find_one({"project_id": pid}) is not None
+    assert client.get(f"/api/conversations/{sid}", headers=auth).json()["project_id"] == pid
+    assert any(p["project_id"] == pid for p in client.get("/api/projects", headers=auth).json())
 
 
 def test_conversation_titles_and_project_names_are_normalized_and_bounded(client, auth):
