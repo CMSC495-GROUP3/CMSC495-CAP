@@ -6,8 +6,8 @@ provider, so it is intentionally separate from ``make check``.
 
 Two tiers are supported:
 
-* ``smoke`` ΓÇö the bounded routine set in ``evaluation/questions.json``
-* ``full`` ΓÇö one supported retrieval question per sample policy, plus refusal,
+* ``smoke`` — the bounded routine set in ``evaluation/questions.json``
+* ``full`` — one supported retrieval question per sample policy, plus refusal,
   ambiguity, and prompt-injection coverage
 """
 
