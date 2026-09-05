@@ -71,6 +71,18 @@ class TestChat:
             client.post("/api/chat", json={"question": "x" * 5001}, headers=auth).status_code == 422
         )
 
+    def test_chat_rejects_session_id_with_newline(self, client, auth):
+        response = client.post(
+            "/api/chat",
+            json={
+                "question": "what is the leave policy?",
+                "session_id": "abc\nINFO forged",
+            },
+            headers=auth,
+        )
+
+        assert response.status_code == 422
+
     def test_refuses_below_threshold_without_calling_the_model(
         self, client, auth, retrieval, conversation, monkeypatch
     ):
