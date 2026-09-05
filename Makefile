@@ -37,10 +37,10 @@ else
 endif
 
 setup: ## One-time: create .venv, install Python and Node dependencies
-ifeq ($(OS),Windows_NT)
-	if not exist "$(VENV)" $(PYTHON) -m venv $(VENV)
-else
-	test -d $(VENV) || $(PYTHON) -m venv $(VENV)
+# Make-native existence check: Git Bash also sets OS=Windows_NT, so a cmd.exe
+# `if not exist` recipe is not portable across shells that share that Make OS.
+ifeq ($(wildcard $(VENV)/.),)
+	$(PYTHON) -m venv $(VENV)
 endif
 	$(PIP) install -q -r requirements/dev.txt
 	cd $(WEB) && npm install
