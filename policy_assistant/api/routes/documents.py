@@ -95,6 +95,7 @@ def rebuild_document_index() -> int:
             entry["preview"] = _preview(passage.get("text", ""))
 
     if not by_source:
+        documents_col.delete_many({})
         return 0
 
     documents_col.bulk_write(
