@@ -71,6 +71,17 @@ class TestChat:
             client.post("/api/chat", json={"question": "x" * 5001}, headers=auth).status_code == 422
         )
 
+    def test_rejects_session_id_with_newlines(self, client, auth):
+        """A newline in session_id would forge a second API log line."""
+        assert (
+            client.post(
+                "/api/chat",
+                json={"question": "How much PTO?", "session_id": "abc\nINFO forged"},
+                headers=auth,
+            ).status_code
+            == 422
+        )
+
     def test_refuses_below_threshold_without_calling_the_model(
         self, client, auth, retrieval, conversation, monkeypatch
     ):

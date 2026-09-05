@@ -61,7 +61,7 @@ FIRST_ASSISTANT_INDEX = 1
 
 
 class CreateEscalationRequest(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=64)
+    session_id: str = Field(..., min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     message_index: int = Field(..., ge=FIRST_ASSISTANT_INDEX)
     reason: EscalationReason
     note: str | None = Field(None, max_length=ESCALATION_NOTE_MAX_LENGTH)

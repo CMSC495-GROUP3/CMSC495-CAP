@@ -55,7 +55,8 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=5000)
-    session_id: str | None = None
+    # Constrained so a newline cannot forge a second log line (CodeQL py/log-injection).
+    session_id: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class ChatResponse(BaseModel):
