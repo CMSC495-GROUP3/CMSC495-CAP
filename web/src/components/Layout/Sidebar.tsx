@@ -9,10 +9,23 @@ import { useConversations } from '../../hooks/useConversations'
 import { useProjects } from '../../hooks/useProjects'
 import { useAuth } from '../../hooks/useAuth'
 import BrandingHeader from './BrandingHeader'
+import SidebarToggle from './SidebarToggle'
 import type { Conversation, Project } from '../../types'
 
-export default function Sidebar() {
-  const navigate = useNavigate()
+interface SidebarProps {
+  open: boolean
+  isDesktop: boolean
+  onToggle: () => void
+  /** Called after any navigation; the phone layout closes the drawer here. */
+  onNavigate?: () => void
+}
+
+export default function Sidebar({ open, isDesktop, onToggle, onNavigate }: SidebarProps) {
+  const routerNavigate = useNavigate()
+  const navigate = (to: string) => {
+    routerNavigate(to)
+    onNavigate?.()
+  }
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const activeSessionId = searchParams.get('session_id')
@@ -113,21 +126,35 @@ export default function Sidebar() {
     onDelete: handleDeleteConversation,
   }
 
+  // Desktop: part of the row, simply absent when closed. Phone: a drawer over
+  // the page that slides in; it stays mounted so the slide can animate, and
+  // `inert` keeps its controls out of the tab order while it is off screen.
+  const layoutClass = isDesktop
+    ? open ? 'flex' : 'hidden'
+    : `fixed inset-y-0 left-0 z-40 flex transform transition-transform duration-200 motion-reduce:transition-none ${
+        open ? 'translate-x-0 shadow-2xl shadow-black/60' : '-translate-x-full'
+      }`
+
   return (
-    <aside className="w-60 flex-shrink-0 flex flex-col h-screen bg-[#0e1117] border-r border-white/8">
+    <aside
+      id="app-sidebar"
+      inert={!isDesktop && !open}
+      className={`w-60 flex-shrink-0 flex-col h-screen bg-[#0e1117] border-r border-white/8 ${layoutClass}`}
+    >
 
       {/* Branding */}
       <BrandingHeader />
 
-      {/* New chat */}
-      <div className="px-3 pt-1 pb-2">
+      {/* New chat, with the collapse control beside it */}
+      <div className="px-3 pt-1 pb-2 flex items-center gap-1">
         <button
           onClick={() => navigate('/chat')}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-300 hover:bg-white/8 hover:text-white transition-colors cursor-pointer"
+          className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-300 hover:bg-white/8 hover:text-white transition-colors cursor-pointer"
         >
           <Plus size={16} />
           New chat
         </button>
+        <SidebarToggle open={open} onToggle={onToggle} />
       </div>
 
       {/* Scrollable middle */}

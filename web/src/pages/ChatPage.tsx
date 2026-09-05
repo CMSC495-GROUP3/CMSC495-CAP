@@ -35,7 +35,7 @@ export default function ChatPage() {
   const hasMessages = messages.length > 0
 
   return (
-    <div className="flex flex-col flex-1 h-screen overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Page header — compact once chat starts */}
       <header className="flex-shrink-0 px-6 pt-6 pb-2">
         {!hasMessages && (

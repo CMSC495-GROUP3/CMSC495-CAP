@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { TOKEN_KEY, isTokenExpired } from './api/client'
 import LoginForm from './components/Auth/LoginForm'
 import Sidebar from './components/Layout/Sidebar'
+import SidebarToggle from './components/Layout/SidebarToggle'
+import { useSidebar } from './hooks/useSidebar'
+import { APP_NAME } from './config'
 import ChatPage from './pages/ChatPage'
 import DocumentLibraryPage from './pages/DocumentLibraryPage'
 
@@ -18,10 +21,40 @@ function readIsAuthenticated(): boolean {
 }
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  const sidebar = useSidebar()
+  // On desktop the toggle lives in the sidebar while it is open. Everywhere
+  // else (sidebar hidden, or any phone) a slim bar above the page holds it,
+  // so pages never have to leave room for a floating button.
+  const showTopBar = !sidebar.open || !sidebar.isDesktop
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+      <Sidebar
+        open={sidebar.open}
+        isDesktop={sidebar.isDesktop}
+        onToggle={sidebar.toggle}
+        onNavigate={sidebar.isDesktop ? undefined : sidebar.close}
+      />
+      {!sidebar.isDesktop && sidebar.open && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60"
+          onClick={sidebar.close}
+          aria-hidden="true"
+        />
+      )}
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {showTopBar && (
+          <div className="flex-shrink-0 flex items-center gap-2 h-11 px-2 border-b border-white/8">
+            <SidebarToggle open={sidebar.open} onToggle={sidebar.toggle} />
+            {!sidebar.isDesktop && (
+              <span className="text-xs font-extrabold tracking-[0.3em] uppercase text-[#C2B067]/80 select-none">
+                {APP_NAME}
+              </span>
+            )}
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   )
 }
