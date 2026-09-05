@@ -3,9 +3,20 @@
 # Everything runs from the repo's own virtualenv (.venv) and web/node_modules,
 # so nothing here depends on what is installed globally.
 
-VENV    := .venv
-PY      := $(VENV)/bin/python
-PIP     := $(VENV)/bin/pip
+VENV := .venv
+
+ifeq ($(OS),Windows_NT)
+VENV_BIN := $(VENV)/Scripts
+PYTHON ?= py -3
+else
+VENV_BIN := $(VENV)/bin
+PYTHON ?= python3
+endif
+
+PY      := $(VENV_BIN)/python
+PIP     := $(VENV_BIN)/pip
+UVICORN := $(VENV_BIN)/uvicorn
+RUFF    := $(VENV_BIN)/ruff
 WEB     := web
 
 # Password for the offline stub server. Override: make stub DEV_PASSWORD=hunter2
@@ -19,17 +30,26 @@ FAKE_SCORE := $(if $(REFUSE),0.50,0.78)
 .PHONY: help setup stub web test cov lint lint-py lint-web fmt audit build check compose acceptance loadtest clean
 
 help: ## Show this list
+ifeq ($(OS),Windows_NT)
+	@powershell -NoProfile -Command "Select-String -Path '$(MAKEFILE_LIST)' -Pattern '^[a-z][a-z-]*:.*## ' | ForEach-Object { $$parts = $$_.Line -split ':.*## ', 2; '  {0,-10} {1}' -f $$parts[0], $$parts[1] }"
+else
 	@grep -E '^[a-z][a-z-]*:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+endif
 
 setup: ## One-time: create .venv, install Python and Node dependencies
-	test -d $(VENV) || python3 -m venv $(VENV)
+# Make-native existence check: Git Bash also sets OS=Windows_NT, so a cmd.exe
+# `if not exist` recipe is not portable across shells that share that Make OS.
+ifeq ($(wildcard $(VENV)/.),)
+	$(PYTHON) -m venv $(VENV)
+endif
 	$(PIP) install -q -r requirements/dev.txt
 	cd $(WEB) && npm install
 
+stub: export APP_PASSWORD_HASH = $(shell $(PY) -c "import bcrypt; print(bcrypt.hashpw(b'$(DEV_PASSWORD)', bcrypt.gensalt()).decode())")
+stub: export FAKE_PASSAGE_SCORE = $(FAKE_SCORE)
+stub: export FAKE_DB_LATENCY_MS = 0
 stub: ## Run the API on :8000 with a fake model and in-memory Mongo (no accounts needed)
-	APP_PASSWORD_HASH="$$($(PY) -c "import bcrypt; print(bcrypt.hashpw(b'$(DEV_PASSWORD)', bcrypt.gensalt()).decode())")" \
-	FAKE_PASSAGE_SCORE=$(FAKE_SCORE) FAKE_DB_LATENCY_MS=0 \
-	$(VENV)/bin/uvicorn scripts.loadtest.server:app --port 8000 --log-level warning
+	$(UVICORN) scripts.loadtest.server:app --port 8000 --log-level warning
 
 web: ## Run the React app on :5173 with hot reload (proxies /api to :8000)
 	cd $(WEB) && npx vite --port 5173 --strictPort
@@ -43,15 +63,15 @@ cov: ## Tests with a coverage report; CI fails under 80%
 lint: lint-py lint-web ## Ruff on Python; ESLint and TypeScript on the web app
 
 lint-py: ## Ruff lint and format check (make fmt fixes what it can)
-	$(VENV)/bin/ruff check .
-	$(VENV)/bin/ruff format --check .
+	$(RUFF) check .
+	$(RUFF) format --check .
 
 lint-web: ## ESLint and TypeScript on the web app
 	cd $(WEB) && npm run -s lint && npx tsc -b
 
 fmt: ## Fix lint findings and format the Python code
-	$(VENV)/bin/ruff check --fix .
-	$(VENV)/bin/ruff format .
+	$(RUFF) check --fix .
+	$(RUFF) format .
 
 audit: ## Known vulnerabilities in the Python and npm dependency trees
 	./scripts/audit.sh
