@@ -165,8 +165,9 @@ main() {
   if [ ${#services[@]} -gt 0 ]; then
     up=("${services[@]}")
     [ -n "$recreate_caddy" ] && up+=(caddy)
-    # A full rebuild needs ~1 GiB free; the 6.8 GB root volume sits near
-    # that after one warm cache (issue #79). Prune before build when tight
+    # A full rebuild needs ~1 GiB free; the original 6.8 GB root volume sat
+    # near that after one warm cache (issue #79). The volume is 16 GB since
+    # 2026-09-05, so this guard is a backstop: prune before build when tight
     # so the unit does not go red until someone prunes by hand. The weekly
     # docker-prune.timer keeps the cache from creeping between rebuilds.
     avail_kb=$(df -Pk / | awk 'NR==2 {print $4}')

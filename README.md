@@ -555,27 +555,35 @@ locally, plus one variable in `.env`.
    runs a weekly `docker builder prune -f --keep-storage 300M` so the build
    cache cannot fill the root volume between rebuilds. `auto_deploy.sh`
    also prunes when root free space drops under 1 GiB before a rebuild.
-   Until the volume is grown (see [Root disk](#root-disk) below), run
+   The pilot host's root volume was grown to 16 GB on 2026-09-05 (issue
+   #79), so a rebuild no longer competes with the build cache for space. If
+   `df -h /` ever shows under about 1 GB free again, run
    `docker builder prune -f` by hand before a deploy that rebuilds both
-   images if `df -h /` shows under about 1 GB free.
+   images, and see [Root disk](#root-disk) below.
 
 ### Root disk
 
-The pilot instance ships with a small root volume (~7 GB). Docker images are
-about 500 MB; one full rebuild leaves ~1 GB of build cache, which is enough
-to make the next rebuild fail for lack of space. Grow the EBS volume to
-16 GB (or more) in the AWS console, then on the instance:
+The pilot instance launched with a ~7 GB root volume. Docker images are about
+500 MB and one full rebuild leaves ~1 GB of build cache, which was enough to
+make the next rebuild fail for lack of space (issue #79). The volume was grown
+to 16 GB on 2026-09-05, which left about 8 GB free after a warm rebuild, and
+`docker-prune.timer` is enabled so the cache cannot creep into that headroom.
+The pre-build prune in `auto_deploy.sh` stays as a backstop.
+
+To grow the volume again, change its size in the AWS console (gp3 resizes
+online), then on the instance:
 
 ```bash
 lsblk
-sudo growpart /dev/nvme0n1 1
-sudo resize2fs /dev/nvme0n1p1
+sudo growpart /dev/xvda 1
+sudo resize2fs /dev/xvda1
 df -h /
 ```
 
-Device names come from `lsblk`; older instances may show `/dev/xvda` instead
-of `nvme0n1`. The resize is online. Keep `docker-prune.timer` enabled so the
-cache still cannot creep to fill whatever headroom you add.
+Device names come from `lsblk`. The pilot host shows `/dev/xvda`; Nitro
+instance types show `/dev/nvme0n1` and `nvme0n1p1` instead. `growpart` prints
+`NOCHANGE` when the partition already fills the volume, which means the volume
+itself has not been grown yet.
 
 ### Automatic deploys
 
@@ -620,7 +628,8 @@ git update-ref -d refs/deployed/main
 Hosts that already run the older auto-deploy timer need a one-time handoff
 before the first tick that executes the retry-aware script. Without a seeded
 `refs/deployed/main`, that tick diffs against the empty tree, rebuilds both
-images with `--pull`, and recreates Caddy—risky on a near-full root disk.
+images with `--pull`, and recreates Caddy: a slow, avoidable rebuild that
+failed outright while the root disk was near full (issue #79).
 
 1. Confirm the checkout is clean under the new rule (untracked files count):
 
