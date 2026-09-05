@@ -93,7 +93,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Validate the labeled question sets
-        # The loader has no third-party imports, so nothing is installed here.
+        # The loader has no third-party imports (evaluation.py pulls in
+        # documents.py, which is also stdlib-only), so nothing is installed here.
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           from collections import Counter

@@ -10,6 +10,7 @@ from policy_assistant.rag.evaluation import (
     SMOKE_CATEGORY_MIXES,
     extract_answer_citations,
     load_cases,
+    main,
     resolve_dataset,
     sample_policy_titles,
     score_results,
@@ -58,6 +59,18 @@ def test_named_tiers_resolve_to_checked_in_datasets():
 def test_resolve_dataset_rejects_tier_and_path_together(tmp_path):
     with pytest.raises(ValueError, match="either --tier or --dataset"):
         resolve_dataset("smoke", tmp_path / "custom.json")
+
+
+def test_cli_rejects_tier_and_dataset_together(tmp_path, capsys):
+    """Argparse mutually exclusive group owns CLI exclusivity before resolve."""
+    custom = tmp_path / "custom.json"
+    custom.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--tier", "smoke", "--dataset", str(custom)])
+
+    assert exc_info.value.code == 2
+    assert "not allowed with argument" in capsys.readouterr().err
 
 
 def test_expected_sources_must_exist_in_sample_corpus():

@@ -317,12 +317,13 @@ def _confirm_paid_run(tier: str, case_count: int, dataset: Path, assume_yes: boo
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--tier",
         choices=sorted(EVALUATION_TIERS),
         help="Named evaluation tier (smoke or full). Preferred over --dataset.",
     )
-    parser.add_argument(
+    source.add_argument(
         "--dataset",
         type=Path,
         help="Explicit path to a labeled question set (mutually exclusive with --tier)",
@@ -340,11 +341,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    try:
-        tier, dataset = resolve_dataset(args.tier, args.dataset)
-    except ValueError as exc:
-        parser.error(str(exc))
-        return 2  # pragma: no cover - argparse exits; keeps static analysis definite
+    # Argparse owns CLI exclusivity; resolve_dataset still rejects both for
+    # library callers and defaults to the smoke tier when neither is set.
+    tier, dataset = resolve_dataset(args.tier, args.dataset)
 
     cases = load_cases(dataset)
     if not _confirm_paid_run(tier, len(cases), dataset, assume_yes=args.yes):
