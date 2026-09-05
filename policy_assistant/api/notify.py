@@ -5,10 +5,11 @@ wherever someone will see it. Delivery runs as a FastAPI background task after
 the response is sent, so the employee never waits on a third-party HTTP call,
 and a failure here is logged rather than raised. The escalation is already
 stored, and a webhook outage must not turn a successful hand-off into an error.
+Callers persist the Boolean result as delivery status on the escalation record.
 
 The payload has a top-level `text` field so Slack and Teams incoming webhooks
 render it as a message with no adapter. Any other receiver can read the full
-`escalation` object beside it.
+`escalation` object beside it. Never log or return the webhook URL.
 """
 
 import json

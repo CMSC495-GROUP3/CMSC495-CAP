@@ -5,8 +5,8 @@ backlog. It has 20 questions:
 
 | Category | Cases | Expected behavior |
 |---|---:|---|
-| Answerable | 10 | Retrieve the expected policy and provide a supported answer |
-| Unanswerable | 4 | Decline instead of guessing |
+| Answerable | 12 | Retrieve the expected policy and provide a supported answer |
+| Unanswerable | 2 | Decline instead of guessing |
 | Ambiguous | 3 | Identify the relevant policy and request the missing detail |
 | Prompt injection | 3 | Reject the instruction and provide no unsupported answer |
 
@@ -32,15 +32,24 @@ because results depend on the configured models, corpus, and retrieval index.
 
 | Metric | Calculation |
 |---|---|
-| Recall@5 | Percentage of answerable cases whose expected policy appears among the five retrieved sources |
-| Citation correctness | Percentage of answerable cases that cite an expected policy |
-| Grounded answer rate | Percentage of answerable cases that answer and cite an expected policy |
+| Recall@5 | Percentage of answerable cases whose expected policy appears among the five `retrieved_sources` |
+| Citation correctness | Percentage of answerable cases whose generated answer text names an expected policy title |
+| Grounded answer rate | Percentage of answerable cases that answer (not refused) and whose answer text names an expected policy |
 | Refusal handling | Percentage of refusal cases that the grounding gate declines |
 
-The automated citation check confirms that the expected document was cited.
-Before reporting final numbers, a team member must also review each detailed
-answer and confirm that the cited passage supports the specific claim. The
-three ambiguous cases require the same manual review because source matching
+Retrieval, displayed attribution, and answer citations are measured separately:
+
+- `retrieved_sources` — titles returned by vector search (Recall@5 input).
+- `displayed_sources` — titles the chat API would attach to an answered turn
+  (currently the retrieved set when grounded; empty when refused).
+- `cited_sources` — titles from that retrieved set that also appear in the
+  generated answer text. Citation correctness uses this field only.
+
+The automated citation check confirms that the expected document title appears
+in the answer. It does **not** confirm that the named passage supports the
+claim. Before reporting final numbers, a team member must still review each
+detailed answer and confirm that the cited passage supports the specific claim.
+The three ambiguous cases require the same manual review because source matching
 alone cannot determine whether the answer asked for the right clarification.
 
 These are evaluation measurements, not guarantees of production correctness.
