@@ -102,3 +102,57 @@ def test_deleting_unknown_project_does_not_unassign_orphaned_conversation(client
         client.get("/api/conversations/legacy-orphan", headers=auth).json()["project_id"]
         == "missing"
     )
+
+
+def test_conversation_titles_and_project_names_are_normalized_and_bounded(client, auth):
+    blank = client.post("/api/conversations", json={"title": "   "}, headers=auth)
+    assert blank.status_code == 422
+
+    oversized = client.post(
+        "/api/conversations",
+        json={"title": "x" * 201},
+        headers=auth,
+    )
+    assert oversized.status_code == 422
+
+    created = client.post(
+        "/api/conversations",
+        json={"title": "  leave   question  "},
+        headers=auth,
+    )
+    assert created.status_code == 200
+    assert created.json()["title"] == "leave question"
+
+    defaulted = client.post("/api/conversations", json={}, headers=auth)
+    assert defaulted.status_code == 200
+    assert defaulted.json()["title"] == "New conversation"
+
+    sid = created.json()["session_id"]
+    patch_blank = client.patch(
+        f"/api/conversations/{sid}",
+        json={"title": "\t"},
+        headers=auth,
+    )
+    assert patch_blank.status_code == 422
+
+    patch_ok = client.patch(
+        f"/api/conversations/{sid}",
+        json={"title": "  follow-up  "},
+        headers=auth,
+    )
+    assert patch_ok.status_code == 200
+    assert client.get(f"/api/conversations/{sid}", headers=auth).json()["title"] == "follow-up"
+
+    blank_project = client.post("/api/projects", json={"name": "  "}, headers=auth)
+    assert blank_project.status_code == 422
+
+    long_project = client.post("/api/projects", json={"name": "p" * 101}, headers=auth)
+    assert long_project.status_code == 422
+
+    project = client.post(
+        "/api/projects",
+        json={"name": "  Q3   Planning "},
+        headers=auth,
+    )
+    assert project.status_code == 200
+    assert project.json()["name"] == "Q3 Planning"

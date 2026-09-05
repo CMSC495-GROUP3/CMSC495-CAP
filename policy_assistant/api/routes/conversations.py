@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from pymongo import DESCENDING
 
 from policy_assistant.api.db import conversations_col, projects_col
@@ -12,17 +12,51 @@ from policy_assistant.api.routes.deps import require_auth
 
 router = APIRouter()
 
+# Visible label bound: enough for a short subject line, not a pasted essay.
+CONVERSATION_TITLE_MAX_LENGTH = 200
+DEFAULT_CONVERSATION_TITLE = "New conversation"
+
+
+def _normalize_label(value: str, *, field_name: str, max_length: int) -> str:
+    """Strip and collapse whitespace; reject empty or oversized labels."""
+    normalized = " ".join(value.split())
+    if not normalized:
+        raise ValueError(f"{field_name} must not be blank")
+    if len(normalized) > max_length:
+        raise ValueError(f"{field_name} must be at most {max_length} characters")
+    return normalized
+
 
 class CreateConversationRequest(BaseModel):
-    title: str = "New conversation"
+    title: str = Field(default=DEFAULT_CONVERSATION_TITLE, max_length=CONVERSATION_TITLE_MAX_LENGTH)
     project_id: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _normalize_label(
+            value,
+            field_name="title",
+            max_length=CONVERSATION_TITLE_MAX_LENGTH,
+        )
 
 
 class UpdateConversationRequest(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=CONVERSATION_TITLE_MAX_LENGTH)
     # project_id is intentionally absent from defaults — we use model_fields_set
     # to distinguish "explicitly set to null (unassign)" from "not included in request".
     project_id: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_label(
+            value,
+            field_name="title",
+            max_length=CONVERSATION_TITLE_MAX_LENGTH,
+        )
 
 
 def _serialize(doc: dict) -> dict:
