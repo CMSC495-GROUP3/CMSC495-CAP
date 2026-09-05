@@ -18,14 +18,30 @@ from typing import Any
 def _matches(doc: dict, query: dict) -> bool:
     """Support the handful of query forms used in this codebase."""
     for field, condition in query.items():
+        if field == "$or":
+            if not any(_matches(doc, branch) for branch in condition):
+                return False
+            continue
+        if field == "$and":
+            if not all(_matches(doc, branch) for branch in condition):
+                return False
+            continue
         value = doc.get(field)
         if isinstance(condition, dict):
             for op, operand in condition.items():
+                if op == "$exists" and (field in doc) is not bool(operand):
+                    return False
                 if op == "$nin" and value in operand:
                     return False
                 if op == "$in" and value not in operand:
                     return False
                 if op == "$gte" and not (value is not None and value >= operand):
+                    return False
+                if op == "$lt" and not (value is not None and value < operand):
+                    return False
+                if op == "$lte" and not (value is not None and value <= operand):
+                    return False
+                if op == "$gt" and not (value is not None and value > operand):
                     return False
                 if op == "$regex":
                     import re as _re
