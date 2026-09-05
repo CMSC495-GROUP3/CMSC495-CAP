@@ -500,12 +500,6 @@ locally, plus one variable in `.env`.
    SITE_ADDRESS=sourcebook.duckdns.org
    ```
 
-   That directory name is load-bearing: the systemd unit file hard-codes
-   `/home/ubuntu/CMSC495-CAP`, and Compose derives the project name
-   `cmsc495-cap` from it (so containers and networks stay
-   `cmsc495-cap-api-1`, `cmsc495-cap_edge`, and so on). Do not rename the
-   checkout to match the GitHub repository name.
-
 5. Start the stack:
 
    ```bash
