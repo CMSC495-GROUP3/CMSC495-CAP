@@ -1,0 +1,11 @@
+{
+  // Editor markdownlint config. Not gated in CI (make check / GitHub Actions).
+  // README uses intentional GitHub HTML for the centered hero, badges, and nav.
+  "default": true,
+  "MD013": false,
+  "MD033": {
+    "allowed_elements": ["p", "img", "h1", "br", "a"]
+  },
+  "MD041": false,
+  "MD060": false
+}
