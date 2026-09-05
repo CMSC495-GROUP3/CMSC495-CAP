@@ -42,13 +42,23 @@ import time
 
 import bcrypt
 
+# This entrypoint deliberately disables the application's rate limiter below.
+# Refuse any environment that could select a real provider before mutating the
+# environment or importing the production application.
+if os.getenv("APP_ENV", "").strip().casefold() == "production":
+    raise RuntimeError("The load-test stub cannot run with APP_ENV=production")
+
+_inherited_provider = os.getenv("LLM_PROVIDER", "fake").strip().casefold()
+if _inherited_provider != "fake":
+    raise RuntimeError("The load-test stub requires LLM_PROVIDER=fake")
+
 # Must be set before importing main, which validates them at import.
 os.environ.setdefault("JWT_SECRET_KEY", "loadtest-secret-not-for-real-use")
 os.environ.setdefault("MONGODB_URI", "mongodb://stubbed-never-contacted")
 # main also checks that this is a bcrypt hash. `make stub` sets a real one;
 # run.py logs in with password "loadtest", so the hash must match that word.
 os.environ.setdefault("APP_PASSWORD_HASH", bcrypt.hashpw(b"loadtest", bcrypt.gensalt(4)).decode())
-os.environ.setdefault("LLM_PROVIDER", "fake")
+os.environ["LLM_PROVIDER"] = "fake"
 os.environ.pop("APP_ENV", None)  # FakeProvider refuses to run as production
 
 # Simulated database round-trip. Real Atlas is slower and more variable; this
